@@ -31,11 +31,6 @@ DEFAULT_CSV_METADATA = {
                     "last_download": None,
                     "last_modified_on_hf": None,
                 },
-                {
-                    "file_name": "danbooru_tags_cooccurrence.csv",
-                    "last_download": None,
-                    "last_modified_on_hf": None,
-                },
             ],
         }
     ],
@@ -97,11 +92,22 @@ class Downloader:
                     return default_metadata
                 else:
                     self.csv_meta_file_exists_at_start = True
-                    return metadata
+                    return self._strip_cooccurrence_files(metadata)
 
         except (IOError, json.JSONDecodeError) as e:
             print(f"[Autocomplete-Plus] Error loading metadata from {CSV_META_FILE}: {e}. Using default metadata.")
             return default_metadata
+
+    def _strip_cooccurrence_files(self, metadata: dict) -> dict:
+        """Removes cooccurrence CSV entries so they are no longer downloaded."""
+        for dataset in metadata.get("hf_datasets", []):
+            csv_files = dataset.get("csv_files", [])
+            dataset["csv_files"] = [
+                file_meta
+                for file_meta in csv_files
+                if "cooccurrence" not in str(file_meta.get("file_name", "")).lower()
+            ]
+        return metadata
 
     def _save_metadata(self):
         """Saves metadata to CSV_META_FILE."""

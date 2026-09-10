@@ -16,6 +16,7 @@ node_modules/
 # csv files
 data/*.csv
 data/.download
+data/related-tags/
 
 # csv meta information
 csv_meta.json

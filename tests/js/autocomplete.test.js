@@ -61,12 +61,8 @@ function setupTestData() {
             sortedTags: [],
             tagMap: new Map(),
             aliasMap: new Map(),
-            cooccurrenceMap: new Map(),
             isInitializing: false,
             initialized: true,
-            baseLoadingProgress: {
-                cooccurrence: 0
-            }
         };
     });
 

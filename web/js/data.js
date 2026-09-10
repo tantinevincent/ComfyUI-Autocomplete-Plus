@@ -105,16 +105,8 @@ class AutocompleteData {
         /** @type {Map<string, TagData>} */
         this.aliasMap = new Map();
 
-        /** @type {Map<string, Map<string, number>>} */
-        this.cooccurrenceMap = new Map();
-
         this.isInitializing = false;
         this.initialized = false;
-
-        // Progress of "base" csv loading
-        this.baseLoadingProgress = {
-            cooccurrence: 0
-        };
     }
 }
 
@@ -269,83 +261,6 @@ async function buildFlexSearchIndex(siteName) {
 }
 
 /**
- * Loads co-occurrence data from a single CSV file.
- * @param {string} csvUrl - The URL of the CSV file to load.
- * @param {string} siteName - The site name (e.g., 'danbooru', 'e621').
- * @returns {Promise<void>}
- */
-async function loadCooccurrence(csvUrl, siteName) {
-    try {
-        const response = await fetch(csvUrl, { cache: "no-store" });
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const csvText = await response.text();
-        const lines = csvText.split('\n').filter(line => line.trim().length > 0);
-
-        const startIndex = lines[0].startsWith('tag_a,tag_b,count') ? 1 : 0;
-
-        await processInChunks(lines, startIndex, autoCompleteData[siteName].cooccurrenceMap, csvUrl, siteName);
-    } catch (error) {
-        console.error(`[Autocomplete-Plus] Failed to fetch or process cooccurrence data from ${csvUrl}:`, error);
-    }
-}
-
-/**
- * Process CSV data in chunks to avoid blocking the UI.
- * Modifies the targetMap directly.
- */
-function processInChunks(lines, startIndex, targetMap, csvUrl, siteName) {
-    return new Promise((resolve) => {
-        const CHUNK_SIZE = 10000;
-        let i = startIndex;
-        let pairCount = 0;
-
-        function processChunk() {
-            const endIndex = Math.min(i + CHUNK_SIZE, lines.length);
-
-            for (; i < endIndex; i++) {
-                const line = lines[i];
-                const columns = parseCSVLine(line);
-
-                if (columns.length >= 3) {
-                    const tagA = columns[0].trim();
-                    const tagB = columns[1].trim();
-                    const count = parseInt(columns[2].trim(), 10);
-
-                    if (!tagA || !tagB || isNaN(count)) continue;
-
-                    // Add tagA -> tagB relationship
-                    if (!targetMap.has(tagA)) {
-                        targetMap.set(tagA, new Map());
-                    }
-                    targetMap.get(tagA).set(tagB, count);
-
-
-                    // Add tagB -> tagA relationship (bidirectional)
-                    if (!targetMap.has(tagB)) {
-                        targetMap.set(tagB, new Map());
-                    }
-                    targetMap.get(tagB).set(tagA, count);
-
-                    pairCount++;
-                }
-            }
-
-            if (i < lines.length) {
-                autoCompleteData[siteName].baseLoadingProgress.cooccurrence = Math.round((i / lines.length) * 100);
-                setTimeout(processChunk, 0);
-            } else {
-                resolve();
-            }
-        }
-
-        processChunk();
-    });
-}
-
-/**
  * Parse a CSV line properly, handling quoted values that may contain commas.
  * @param {string} line A single CSV line
  * @returns {string[]} Array of column values
@@ -415,7 +330,6 @@ async function initializeDataFromCSV(csvListData, source) {
         // Store functions that return Promises (Promise Factories)
         // These factories will be called later to start the actual loading.
         const tagsLoadPromiseFactories = [];
-        const cooccurrenceLoadPromiseFactories = [];
 
         // Check if siteName exists in csvListData to prevent errors if a sourte is removed or misconfigured
         if (!csvListData[source]) {
@@ -424,10 +338,7 @@ async function initializeDataFromCSV(csvListData, source) {
         }
 
         const extraTagsFileList = csvListData[source].extra_tags || [];
-        const extraCooccurrenceFileList = csvListData[source].extra_cooccurrence || [];
-
         const tagsUrl = `/autocomplete-plus/csv/${source}/tags`;
-        const cooccurrenceUrl = `/autocomplete-plus/csv/${source}/tags_cooccurrence`;
 
         // Factory for loading tags for the current sourte
         const siteTagsLoaderFactory = async () => {
@@ -442,43 +353,17 @@ async function initializeDataFromCSV(csvListData, source) {
         };
         tagsLoadPromiseFactories.push(siteTagsLoaderFactory);
 
-        // Factory for loading cooccurrence data for the current sourte
-        const siteCooccurrenceLoaderFactory = async () => {
-            let promiseChain = Promise.resolve();
-            for (let i = 0; i < extraCooccurrenceFileList.length; i++) {
-                promiseChain = promiseChain.then(() => loadCooccurrence(`${cooccurrenceUrl}/extra/${i}`, source));
-            }
-            if (csvListData[source].base_cooccurrence) {
-                promiseChain = promiseChain.then(() => loadCooccurrence(`${cooccurrenceUrl}/base`, source));
-            }
-            return promiseChain;
-        };
-        cooccurrenceLoadPromiseFactories.push(siteCooccurrenceLoaderFactory);
-
-        // Now, execute all promise factories and wait for their completion.
-        // The actual loading (fetch calls) will start when the factories are invoked here.
-        await Promise.all([
-            Promise.all(tagsLoadPromiseFactories.map(factory => factory()))
-                .then(() => {
-                    // Sort by count in descending order
-                    autoCompleteData[source].sortedTags.sort((a, b) => b.count - a.count);
-
-                    // Build FlexSearch index after tags are loaded
-                    return buildFlexSearchIndex(source);
-                })
-                .then(() => {
-                    const endTime = performance.now();
-                    if (csvListData[source].base_tags) {
-                        console.log(`[Autocomplete-Plus] "${source}" Tags loading complete in ${(endTime - startTime).toFixed(2)}ms`);
-                    }
-                }),
-            Promise.all(cooccurrenceLoadPromiseFactories.map(factory => factory())).then(() => {
-                const endTime = performance.now();
-                if (csvListData[source].base_cooccurrence) {
-                    console.log(`[Autocomplete-Plus] "${source}" Co-occurrence loading complete in ${(endTime - startTime).toFixed(2)}ms.`);
-                }
+        await Promise.all(tagsLoadPromiseFactories.map(factory => factory()))
+            .then(() => {
+                autoCompleteData[source].sortedTags.sort((a, b) => b.count - a.count);
+                return buildFlexSearchIndex(source);
             })
-        ]);
+            .then(() => {
+                const endTime = performance.now();
+                if (csvListData[source].base_tags) {
+                    console.log(`[Autocomplete-Plus] "${source}" Tags loading complete in ${(endTime - startTime).toFixed(2)}ms`);
+                }
+            });
 
         autoCompleteData[source].initialized = true;
     } catch (error) {

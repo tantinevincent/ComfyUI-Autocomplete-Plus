@@ -49,7 +49,7 @@ When you type in a text input area, tags that partially match the text are displ
 
 ![ss02](https://github.com/user-attachments/assets/854571cd-01eb-4e92-a118-2303bec0b175)
 
-When you select any tag in a text input area, a list of highly related tags is displayed. You can insert a tag by clicking it or by selecting it with the up/down arrow keys and then pressing Enter or Tab. The UI's position and size are automatically adjusted based on the text area being edited.
+When you select any tag in a text input area, a list of related tags from the [Danbooru related tags API](https://danbooru.donmai.us/wiki_pages/help%3Aapi) is displayed. Results are cached on disk under `data/related-tags/` for 7 days. You can insert a tag by clicking it or by selecting it with the up/down arrow keys and then pressing Enter or Tab. The UI's position and size are automatically adjusted based on the text area being edited.
 
 - The display position is primarily at the bottom of the text area and automatically adjusts vertically based on available space.
   - You can switch between vertical and horizontal display positions using the "↕️|↔️" button in the header.
@@ -57,6 +57,7 @@ When you select any tag in a text input area, a list of highly related tags is d
 - Clicking the tag in the header opens the tag's Wiki page.
 - Tags that have already been entered are displayed grayed out. If you try to insert a grayed-out tag, the already entered tag will instead be selected.
 - You can display related tags for the cursor position by pressing `Ctrl+Shift+Space`.
+- Related tags are cached under `data/related-tags/` for 7 days. Delete that folder to force a refresh. The first lookup (and lookups after expiry) requires internet access.
 
 ## Auto Formatter
 
@@ -74,8 +75,8 @@ Detailed behavior is as follows:
 
 ## CSV Data
 
-Two basic CSV data files are required for operation. These are managed on [HuggingFace](https://huggingface.co/datasets/newtextdoc1111/danbooru-tag-csv) and are automatically downloaded when ComfyUI is first launched after installation, so no setup is required.  
-Since the basic CSV files are based on the Danbooru dataset publicly available on HuggingFace, the post counts and related tag information may differ from the Danbooru website.
+A basic CSV data file is required for autocomplete. It is managed on [HuggingFace](https://huggingface.co/datasets/newtextdoc1111/danbooru-tag-csv) and is automatically downloaded when ComfyUI is first launched after installation, so no setup is required.  
+Since the CSV is based on the Danbooru dataset publicly available on HuggingFace, post counts may differ from the Danbooru website. Related tags are fetched from Danbooru and are not taken from this CSV.
 
 > [!IMPORTANT]
 > The basic CSV contains both SFW and NSFW tags.
@@ -90,24 +91,16 @@ Tag information is filtered under the following conditions:
 - Category is `general, character, or copyright`
 - Tag name does not contain `(cosplay)`
 
-**danbooru_tags_cooccurrence.csv**
-
-This is a CSV file for related tag calculation, recording tag pairs and their co-occurrence counts.
-
-Tag pairs are further filtered from the tag information CSV under the following conditions:
-- Co-occurrence count of 100 or more
-
 ### e621 CSV
 
 Currently, automatic download of CSV for e621 is not supported, so please manually place a CSV with the same structure as `danbooru_tags.csv` in the data folder with the name `e621_tags.csv`.
-Also, displaying related tags is not supported.
+Related tags always use Danbooru's API (e621 related tags are not supported).
 
 ### User CSV
 
 Users can also use their own CSV files. CSV files should be placed in the `data` folder according to the following naming convention:
 
 - **CSV for Autocomplete**: `<danbooru | e621>_tags*.csv`
-- **CSV for Related Tags**: `<danbooru | e621>_tags_cooccurrence*.csv`
 
 For example, you can add frequently used meta tags to the autocomplete suggestions by placing a file named `danbooru_tags_meta.csv` in the `data` folder.
 A header row is not required. A browser reload is necessary to apply the changes.

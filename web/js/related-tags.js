@@ -16,32 +16,6 @@ import {
 // --- RelatedTags Logic ---
 
 /**
- * Calculates the Jaccard similarity between two tags.
- * Jaccard similarity = (A ∩ B) / (A ∪ B) = (A ∩ B) / (|A| + |B| - |A ∩ B|)
- * @param {string} tagSource The name of the site (e.g., 'danbooru', 'e621')
- * @param {string} tagA The first tag
- * @param {string} tagB The second tag
- * @returns {number} Similarity score between 0 and 1
- */
-function calculateJaccardSimilarity(tagSource, tagA, tagB) {
-    // Get the count of tagA and tagB individually
-    const countA = autoCompleteData[tagSource].tagMap.get(tagA)?.count || 0;
-    const countB = autoCompleteData[tagSource].tagMap.get(tagB)?.count || 0;
-
-    if (countA === 0 || countB === 0) return 0;
-
-    // Get the cooccurrence count
-    const cooccurrenceAB = autoCompleteData[tagSource].cooccurrenceMap.get(tagA)?.get(tagB) || 0;
-
-    // Calculate Jaccard similarity
-    // (A ∩ B) / (A ∪ B) = (A ∩ B) / (|A| + |B| - |A ∩ B|)
-    const intersection = cooccurrenceAB;
-    const union = countA + countB - cooccurrenceAB;
-
-    return union > 0 ? intersection / union : 0;
-}
-
-/**
  * Extracts the tag at the current cursor position.
  * Utilizes getCurrentTagRange to properly handle tags with weights and parentheses.
  * @param {HTMLTextAreaElement} inputElement The textarea element
@@ -62,55 +36,59 @@ export function getTagFromCursorPosition(inputElement) {
 }
 
 /**
- * Finds related tags for a given tag.
- * @param {string} tag The tag to find related tags for
+ * Merge API related-tag rows with local tag metadata (alias / wiki).
+ * @param {Array<{tag: string, category?: number, count?: number, similarity?: number}>} rawTags
  */
-function searchRelatedTags(tag) {
-    const startTime = performance.now(); // Record start time for performance measurement
+function enrichRelatedTags(rawTags) {
+    const tagSource = TagSource.Danbooru;
+    const localMap = autoCompleteData[tagSource]?.tagMap;
 
-    const tagSource = TagSource.Danbooru; // TODO: Leave the tag source as Danbooru until e621_tags_cooccurrence.csv is ready
+    return (rawTags || []).map((item) => {
+        const local = localMap?.get(item.tag);
+        const tagData = local || new TagData(
+            item.tag,
+            item.category ?? 0,
+            item.count ?? 0,
+            [],
+            tagSource
+        );
 
-    if (!tag || !autoCompleteData[tagSource].initialized || !autoCompleteData[tagSource].cooccurrenceMap.has(tag)) {
-        return [];
-    }
-
-    const cooccurrences = autoCompleteData[tagSource].cooccurrenceMap.get(tag);
-    const relatedTags = [];
-
-    // Convert to array for sorting
-    cooccurrences.forEach((count, coTag) => {
-        // Skip the tag itself
-        if (coTag === tag) return;
-
-        // Get tag data
-        const tagData = autoCompleteData[tagSource].tagMap.get(coTag);
-        if (!tagData) return;
-
-        // Calculate similarity
-        const similarity = calculateJaccardSimilarity(tagSource, tag, coTag);
-
-        relatedTags.push({
-            tag: coTag,
-            similarity: similarity,
-            alias: tagData.alias,
+        return {
+            tag: tagData.tag,
+            similarity: Number(item.similarity) || 0,
+            alias: tagData.alias || [],
             category: tagData.category,
             source: tagData.source,
             count: tagData.count,
             categoryText: tagData.categoryText,
             hasWikiPage: tagData.hasWikiPage
-        });
+        };
+    }).slice(0, settingValues.maxRelatedTags);
+}
+
+/**
+ * Fetches related tags from the ComfyUI proxy (disk-cached on the server).
+ * @param {string} tag
+ * @param {AbortSignal} [signal]
+ */
+async function fetchRelatedTags(tag, signal) {
+    const startTime = performance.now();
+    const params = new URLSearchParams({
+        query: tag,
+        limit: String(settingValues.maxRelatedTags)
     });
 
-    // Sort by similarity (highest first)
-    relatedTags.sort((a, b) => b.similarity - a.similarity);
+    const response = await fetch(`/autocomplete-plus/related-tags?${params.toString()}`, { signal });
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
 
-    // Limit to max number of suggestions
-    const result = relatedTags.slice(0, settingValues.maxRelatedTags);
+    const data = await response.json();
+    const result = enrichRelatedTags(Array.isArray(data.tags) ? data.tags : []);
 
     if (settingValues._logprocessingTime) {
-        const endTime = performance.now();
-        const duration = endTime - startTime;
-        console.debug(`[Autocomplete-Plus] Find tags to related "${tag}" took ${duration.toFixed(2)}ms.`);
+        const duration = performance.now() - startTime;
+        console.debug(`[Autocomplete-Plus] Find tags related to "${tag}" took ${duration.toFixed(2)}ms.`);
     }
 
     return result;
@@ -277,9 +255,11 @@ class RelatedTagsUI {
         this.target = null;
         this.selectedIndex = -1;
         this.relatedTags = [];
-
-        // Timer ID for auto-refresh
-        this.autoRefreshTimerId = null;
+        this.currentTag = null;
+        this.isLoading = false;
+        this.loadError = null;
+        this.fetchGeneration = 0;
+        this.fetchAbortController = null;
 
         // Add click handler for wiki link in header tag name
         this.headerText.addEventListener('mousedown', (e) => {
@@ -324,7 +304,7 @@ class RelatedTagsUI {
      * Display
      * @param {HTMLTextAreaElement} textareaElement The textarea being used
      */
-    show(textareaElement) {
+    async show(textareaElement) {
         if (!settingValues.enableRelatedTags) {
             this.hide();
             return;
@@ -344,26 +324,44 @@ class RelatedTagsUI {
 
         this.target = textareaElement;
 
-        this.relatedTags = searchRelatedTags(this.currentTag);
+        if (this.fetchAbortController) {
+            this.fetchAbortController.abort();
+        }
+        this.fetchAbortController = new AbortController();
+        const { signal } = this.fetchAbortController;
+        const generation = ++this.fetchGeneration;
+        const requestTag = this.currentTag;
+
+        this.isLoading = true;
+        this.loadError = null;
+        this.relatedTags = [];
+        this.selectedIndex = -1;
 
         this.#updateHeader();
         this.#updateContent();
         this.#updatePosition();
-
-        // Make visible
         this.root.style.display = 'block';
 
-        // This function must be called after the content is updated and the root is displayed.
-        this.#highlightItem();
+        try {
+            const tags = await fetchRelatedTags(requestTag, signal);
+            if (generation !== this.fetchGeneration) return;
 
-        // Update initialization status if not already done
-        if (!autoCompleteData[TagSource.Danbooru].initialized) {
-            if (this.autoRefreshTimerId) {
-                clearTimeout(this.autoRefreshTimerId);
+            this.isLoading = false;
+            this.relatedTags = tags;
+            this.#updateContent();
+            this.#updatePosition();
+            this.#highlightItem();
+        } catch (error) {
+            if (error?.name === 'AbortError' || generation !== this.fetchGeneration) {
+                return;
             }
-            this.autoRefreshTimerId = setTimeout(() => {
-                this.#refresh();
-            }, 500);
+
+            console.error(`[Autocomplete-Plus] Failed to load related tags for "${requestTag}":`, error);
+            this.isLoading = false;
+            this.loadError = 'Failed to load related tags';
+            this.relatedTags = [];
+            this.#updateContent();
+            this.#updatePosition();
         }
     }
 
@@ -371,9 +369,13 @@ class RelatedTagsUI {
      * Hides the related tags UI.
      */
     hide() {
-        if (this.autoRefreshTimerId) {
-            clearTimeout(this.autoRefreshTimerId);
+        if (this.fetchAbortController) {
+            this.fetchAbortController.abort();
+            this.fetchAbortController = null;
         }
+        this.fetchGeneration += 1;
+        this.isLoading = false;
+        this.loadError = null;
 
         this.root.style.display = 'none';
         this.selectedIndex = -1;
@@ -390,7 +392,7 @@ class RelatedTagsUI {
      * @param {direction} 1 for down, -1 for up
      */
     navigate(direction) {
-        if (this.relatedTags.length === 0) return;
+        if (!this.relatedTags || this.relatedTags.length === 0) return;
 
         if (this.selectedIndex == -1) {
             // Initialize selection based on navigation direction
@@ -426,7 +428,7 @@ class RelatedTagsUI {
      * @return {TagData|null}
      */
     getSelectedTagData() {
-        if (this.selectedIndex >= 0 && this.selectedIndex < this.relatedTags.length) {
+        if (this.relatedTags && this.selectedIndex >= 0 && this.selectedIndex < this.relatedTags.length) {
             return this.relatedTags[this.selectedIndex];
         }
 
@@ -506,11 +508,18 @@ class RelatedTagsUI {
     #updateContent() {
         this.tagsContainer.innerHTML = '';
 
-        if (!autoCompleteData[TagSource.Danbooru].initialized) {
-            // Show loading message
+        if (this.isLoading) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'related-tags-message';
-            messageDiv.textContent = `Initializing cooccurrence data... [${autoCompleteData[TagSource.Danbooru].baseLoadingProgress.cooccurrence}%]`;
+            messageDiv.textContent = 'Loading related tags...';
+            this.tagsContainer.appendChild(messageDiv);
+            return;
+        }
+
+        if (this.loadError) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'related-tags-message';
+            messageDiv.textContent = this.loadError;
             this.tagsContainer.appendChild(messageDiv);
             return;
         }
@@ -633,7 +642,7 @@ class RelatedTagsUI {
 
         const newHeaderRect = this.header.getBoundingClientRect();
 
-        if (this.relatedTags.length > 0) {
+        if (this.relatedTags && this.relatedTags.length > 0) {
             this.tagsContainer.style.maxHeight = `${placementArea.height - newHeaderRect.height}px`;
         }
 

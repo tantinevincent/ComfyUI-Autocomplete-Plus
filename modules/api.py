@@ -3,9 +3,10 @@ import os
 
 import folder_paths
 import server
-from aiohttp import web
+from aiohttp import ClientError, ClientResponseError, web
 
 from . import downloader as dl
+from . import related_tags as rt
 
 # Get the absolute path to the 'data' directory
 # __file__ is the path to the current script (api.py)
@@ -29,46 +30,36 @@ def get_csv_file_status():
         DANBOORU_PREFIX: {
             "base_tags": False,
             "extra_tags": [],
-            "base_cooccurrence": False,
-            "extra_cooccurrence": [],
         },
         E621_PREFIX: {
             "base_tags": False,
             "extra_tags": [],
-            "base_cooccurrence": False,
-            "extra_cooccurrence": [],
         },
     }
 
+    if not os.path.isdir(DATA_DIR):
+        return data
+
     for prefix in [DANBOORU_PREFIX, E621_PREFIX]:
         base_tags_file = f"{prefix}_{TAGS_SUFFIX}.csv"
-        base_cooccurrence_file = f"{prefix}_{COOCCURRENCE_SUFFIX}.csv"
-
         tags_base_exists = os.path.exists(os.path.join(DATA_DIR, base_tags_file))
-        cooccurrence_base_exists = os.path.exists(os.path.join(DATA_DIR, base_cooccurrence_file))
-
         tags_extra_files = []
-        cooccurrence_extra_files = []
 
         all_csv_files = [f for f in os.listdir(DATA_DIR) if f.startswith(prefix) and f.endswith(".csv")]
 
-        # Create extra CSV files list
         for filename in all_csv_files:
-            if filename in [base_tags_file, base_cooccurrence_file]:
-                continue  # Skip base files
+            if filename == base_tags_file:
+                continue
             if COOCCURRENCE_SUFFIX in filename.lower():
-                cooccurrence_extra_files.append(filename)
-            elif TAGS_SUFFIX in filename.lower():
+                continue
+            if TAGS_SUFFIX in filename.lower():
                 tags_extra_files.append(filename)
 
         data[prefix] = {
             "base_tags": tags_base_exists,
             "extra_tags": tags_extra_files,
-            "base_cooccurrence": cooccurrence_base_exists,
-            "extra_cooccurrence": cooccurrence_extra_files,
         }
 
-    # Return the lists of extra files
     return data
 
 
@@ -111,14 +102,10 @@ async def get_csv_list(_request):
         DANBOORU_PREFIX: {
             "base_tags": csv_file_status[DANBOORU_PREFIX]["base_tags"],
             "extra_tags": csv_file_status[DANBOORU_PREFIX]["extra_tags"],
-            "base_cooccurrence": csv_file_status[DANBOORU_PREFIX]["base_cooccurrence"],
-            "extra_cooccurrence": csv_file_status[DANBOORU_PREFIX]["extra_cooccurrence"],
         },
         E621_PREFIX: {
             "base_tags": csv_file_status[E621_PREFIX]["base_tags"],
             "extra_tags": csv_file_status[E621_PREFIX]["extra_tags"],
-            "base_cooccurrence": csv_file_status[E621_PREFIX]["base_cooccurrence"],
-            "extra_cooccurrence": csv_file_status[E621_PREFIX]["extra_cooccurrence"],
         },
     }
 
@@ -137,10 +124,7 @@ async def get_base_tags_file(request):
     """
     source = str(request.match_info["source"])
     suffix = str(request.match_info["suffix"])
-    if source not in [DANBOORU_PREFIX, E621_PREFIX] or suffix not in [
-        TAGS_SUFFIX,
-        COOCCURRENCE_SUFFIX,
-    ]:
+    if source not in [DANBOORU_PREFIX, E621_PREFIX] or suffix != TAGS_SUFFIX:
         return web.json_response({"error": "Invalid tag source or suffix"}, status=400)
 
     file_path = os.path.join(DATA_DIR, f"{source}_{suffix}.csv")
@@ -160,17 +144,15 @@ async def get_extra_tags_file(request):
 
         source = str(request.match_info["source"])
         suffix = str(request.match_info["suffix"])
-        if source not in [DANBOORU_PREFIX, E621_PREFIX] or suffix not in [
-            TAGS_SUFFIX,
-            COOCCURRENCE_SUFFIX,
-        ]:
+        if source not in [DANBOORU_PREFIX, E621_PREFIX] or suffix != TAGS_SUFFIX:
             return web.json_response({"error": "Invalid tag source or suffix"}, status=400)
 
         index = int(request.match_info["index"])
-        if index < 0 or index >= len(csv_file_status[source][f"extra_{suffix}"]):
+        extra_key = f"extra_{suffix}"
+        if index < 0 or index >= len(csv_file_status[source][extra_key]):
             return web.json_response({"error": "Invalid index"}, status=404)
 
-        file_path = os.path.join(DATA_DIR, csv_file_status[source][f"extra_{suffix}"][index])
+        file_path = os.path.join(DATA_DIR, csv_file_status[source][extra_key][index])
         if not os.path.exists(file_path):
             return web.json_response({"error": "Extra tags file not found"}, status=404)
 
@@ -248,3 +230,33 @@ async def get_loras(request):
     """
     loras = folder_paths.get_filename_list("loras")
     return web.json_response(list(map(lambda a: os.path.splitext(a)[0], loras)))
+
+
+@server.PromptServer.instance.routes.get("/autocomplete-plus/related-tags")
+async def get_related_tags(request):
+    """
+    Returns related tags for a query, served from disk cache or Danbooru related_tag.json.
+    """
+    query = str(request.rel_url.query.get("query", "")).strip()
+    if not query:
+        return web.json_response({"error": "query is required"}, status=400)
+
+    try:
+        limit = int(request.rel_url.query.get("limit", rt.CACHE_FETCH_LIMIT))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "Invalid limit"}, status=400)
+
+    limit = max(1, min(limit, rt.CACHE_FETCH_LIMIT))
+
+    try:
+        tags = await rt.get_related_tags(query, limit)
+        return web.json_response({"query": query, "tags": tags})
+    except ClientResponseError as e:
+        print(f"[Autocomplete-Plus] Danbooru related tags HTTP error for '{query}': {e.status}")
+        return web.json_response({"error": "Failed to fetch related tags"}, status=502)
+    except (ClientError, TimeoutError, json.JSONDecodeError) as e:
+        print(f"[Autocomplete-Plus] Danbooru related tags request failed for '{query}': {e}")
+        return web.json_response({"error": "Failed to fetch related tags"}, status=504)
+    except Exception as e:
+        print(f"[Autocomplete-Plus] Unexpected error fetching related tags for '{query}': {e}")
+        return web.json_response({"error": "Failed to fetch related tags"}, status=500)
