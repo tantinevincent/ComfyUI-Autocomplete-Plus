@@ -350,6 +350,7 @@ class RelatedTagsUI {
             this.relatedTags = tags;
             this.#updateContent();
             this.#updatePosition();
+            this.root.style.display = 'block';
             this.#highlightItem();
         } catch (error) {
             if (error?.name === 'AbortError' || generation !== this.fetchGeneration) {
@@ -362,6 +363,7 @@ class RelatedTagsUI {
             this.relatedTags = [];
             this.#updateContent();
             this.#updatePosition();
+            this.root.style.display = 'block';
         }
     }
 
