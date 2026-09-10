@@ -3,7 +3,7 @@ import os
 
 import folder_paths
 import server
-from aiohttp import ClientError, ClientResponseError, web
+from aiohttp import ClientError, web
 
 from . import downloader as dl
 from . import related_tags as rt
@@ -251,8 +251,9 @@ async def get_related_tags(request):
     try:
         tags = await rt.get_related_tags(query, limit)
         return web.json_response({"query": query, "tags": tags})
-    except ClientResponseError as e:
-        print(f"[Autocomplete-Plus] Danbooru related tags HTTP error for '{query}': {e.status}")
+    except rt.DanbooruHttpError as e:
+        status_label = e.status if e.status else "connection"
+        print(f"[Autocomplete-Plus] Danbooru related tags HTTP error for '{query}': {status_label}")
         return web.json_response({"error": "Failed to fetch related tags"}, status=502)
     except (ClientError, TimeoutError, json.JSONDecodeError) as e:
         print(f"[Autocomplete-Plus] Danbooru related tags request failed for '{query}': {e}")

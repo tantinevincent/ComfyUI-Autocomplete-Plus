@@ -3,16 +3,36 @@ import json
 import os
 import time
 
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientError, ClientSession, ClientTimeout
 
 DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"))
 RELATED_TAGS_CACHE_DIR = os.path.join(DATA_DIR, "related-tags")
 
 DANBOORU_RELATED_TAGS_URL = "https://danbooru.donmai.us/related_tag.json"
-USER_AGENT = "ComfyUI-Autocomplete-Plus"
+# Danbooru/Cloudflare expect a Name/Version User-Agent.
+USER_AGENT = "Autocomplete-Plus/1.11"
 CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 CACHE_FETCH_LIMIT = 100
 REQUEST_TIMEOUT_SECONDS = 10
+
+_session = None
+
+
+class DanbooruHttpError(Exception):
+    def __init__(self, status, message=""):
+        self.status = status
+        super().__init__(message or f"Danbooru returned HTTP {status}")
+
+
+async def _get_session():
+    global _session
+    if _session is None or _session.closed:
+        _session = ClientSession(
+            timeout=ClientTimeout(total=REQUEST_TIMEOUT_SECONDS),
+            trust_env=True,
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        )
+    return _session
 
 
 def _cache_path(query: str) -> str:
@@ -71,7 +91,7 @@ def _write_cache(query: str, tags: list) -> None:
 
 
 def _similarity_from_item(item: dict) -> float:
-    for key in ("cosine_similarity", "jaccard_similarity", "frequency"):
+    for key in ("jaccard_similarity", "cosine_similarity", "frequency"):
         value = item.get(key)
         if isinstance(value, (int, float)):
             return float(value)
@@ -153,14 +173,24 @@ def normalize_related_tags_payload(payload) -> list:
 
 
 async def fetch_related_tags_from_danbooru(query: str) -> list:
-    timeout = ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
-    params = {"query": query, "limit": CACHE_FETCH_LIMIT}
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-
-    async with ClientSession(timeout=timeout, headers=headers) as session:
+    params = {
+        "query": query,
+        "order": "jaccard",
+        "limit": str(CACHE_FETCH_LIMIT),
+    }
+    session = await _get_session()
+    try:
         async with session.get(DANBOORU_RELATED_TAGS_URL, params=params) as response:
-            response.raise_for_status()
+            # Drain the body before raising so SSL shutdown does not leave
+            # APPLICATION_DATA_AFTER_CLOSE_NOTIFY as an unretrieved future.
+            if response.status != 200:
+                await response.read()
+                raise DanbooruHttpError(response.status)
             payload = await response.json(content_type=None)
+    except DanbooruHttpError:
+        raise
+    except (ClientError, TimeoutError) as error:
+        raise DanbooruHttpError(0, str(error)) from error
 
     return normalize_related_tags_payload(payload)
 
