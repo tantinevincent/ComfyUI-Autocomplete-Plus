@@ -73,7 +73,7 @@
     },
     "AutocompletePlus_RelatedTags_CharacterAppearance": {
         "name": "角色显示特征标签",
-        "tooltip": "启用时，角色与作品标签会显示常见的一般特征（发色、瞳色、服装等），而非 Jaccard 相关标签。"
+        "tooltip": "启用时，角色与作品标签会按出现频率显示一般、角色、作品标签，而非 Jaccard 相关标签。"
     },
     "AutocompletePlus_Display_HideAlias": {
         "name": "隐藏别名",

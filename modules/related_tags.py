@@ -51,7 +51,13 @@ def normalize_order(order) -> str:
 
 def normalize_category(category) -> str:
     value = str(category or "").strip().lower()
-    return value if value in ALLOWED_CATEGORIES else ""
+    if not value:
+        return ""
+    if value in ALLOWED_CATEGORIES:
+        return value
+
+    requested = {part.strip() for part in value.replace(" ", ",").split(",") if part.strip()}
+    return ",".join(name for name in ALLOWED_CATEGORIES if name in requested)
 
 
 def _cache_path(query: str, category: str = "", order: str = DEFAULT_ORDER) -> str:

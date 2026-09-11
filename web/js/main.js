@@ -492,7 +492,7 @@ app.registerExtension({
         {
             id: id + ".RelatedTags.CharacterAppearance",
             name: "Appearance Tags for Characters",
-            tooltip: "When enabled, character and copyright tags show frequent general tags (hair, eyes, clothing) instead of Jaccard-related tags.",
+            tooltip: "When enabled, character and copyright tags show frequent general, character, and copyright tags instead of Jaccard-related tags.",
             type: "boolean",
             defaultValue: true,
             category: [name, "Related Tags", "Appearance Tags for Characters"],

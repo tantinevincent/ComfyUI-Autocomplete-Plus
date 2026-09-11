@@ -73,7 +73,7 @@
     },
     "AutocompletePlus_RelatedTags_CharacterAppearance": {
         "name": "角色顯示特徵標籤",
-        "tooltip": "啟用時，角色與作品標籤會顯示常見的一般特徵（髮色、瞳色、服裝等），而非 Jaccard 相關標籤。"
+        "tooltip": "啟用時，角色與作品標籤會依出現頻率顯示一般、角色、作品標籤，而非 Jaccard 相關標籤。"
     },
     "AutocompletePlus_Display_HideAlias": {
         "name": "隱藏別名",

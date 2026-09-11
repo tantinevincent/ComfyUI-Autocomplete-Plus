@@ -38,12 +38,14 @@ export function getTagFromCursorPosition(inputElement) {
 /**
  * Merge API related-tag rows with local tag metadata (alias / wiki).
  * @param {Array<{tag: string, category?: number, count?: number, similarity?: number}>} rawTags
+ * @param {{ allowedCategories?: string[] }} [options]
  */
-function enrichRelatedTags(rawTags) {
+function enrichRelatedTags(rawTags, options = {}) {
     const tagSource = TagSource.Danbooru;
     const localMap = autoCompleteData[tagSource]?.tagMap;
+    const allowedCategories = options.allowedCategories;
 
-    return (rawTags || []).map((item) => {
+    const results = (rawTags || []).map((item) => {
         const local = localMap?.get(item.tag);
         const tagData = local || new TagData(
             item.tag,
@@ -63,8 +65,15 @@ function enrichRelatedTags(rawTags) {
             categoryText: tagData.categoryText,
             hasWikiPage: tagData.hasWikiPage
         };
-    }).slice(0, settingValues.maxRelatedTags);
+    }).filter((item) => {
+        if (!allowedCategories || allowedCategories.length === 0) return true;
+        return allowedCategories.includes(item.categoryText);
+    });
+
+    return results.slice(0, settingValues.maxRelatedTags);
 }
+
+const APPEARANCE_RELATED_CATEGORIES = ['general', 'character', 'copyright'];
 
 /**
  * Look up Danbooru tag metadata, resolving aliases when present.
@@ -79,7 +88,7 @@ function getDanbooruTagData(tag) {
 }
 
 /**
- * Character and copyright tags use frequent general tags (appearance) when enabled.
+ * Character and copyright tags use frequency-ranked general, character, and copyright tags when enabled.
  * @param {string} tag
  * @returns {boolean}
  */
@@ -101,7 +110,7 @@ async function fetchRelatedTags(tag, signal) {
         limit: String(settingValues.maxRelatedTags)
     });
     if (shouldFetchAppearanceTags(tag)) {
-        params.set('category', 'general');
+        params.set('category', APPEARANCE_RELATED_CATEGORIES.join(','));
         params.set('order', 'frequency');
     }
 
@@ -111,7 +120,10 @@ async function fetchRelatedTags(tag, signal) {
     }
 
     const data = await response.json();
-    const result = enrichRelatedTags(Array.isArray(data.tags) ? data.tags : []);
+    const result = enrichRelatedTags(
+        Array.isArray(data.tags) ? data.tags : [],
+        shouldFetchAppearanceTags(tag) ? { allowedCategories: APPEARANCE_RELATED_CATEGORIES } : {}
+    );
 
     if (settingValues._logprocessingTime) {
         const duration = performance.now() - startTime;

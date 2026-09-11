@@ -19,7 +19,7 @@ export const settingValues = {
     maxRelatedTags: 100,
     relatedTagsDisplayPosition: 'horizontal', // 'horizontal' or 'vertical'
     relatedTagsTriggerMode: 'click', // Options: 'click', 'ctrl+Click'
-    relatedTagsCharacterAppearance: true, // Character/copyright tags show frequent general tags
+    relatedTagsCharacterAppearance: true, // Character/copyright tags use frequency: general, character, copyright
 
     // Display settings
     hideAlias: false, // Hide alias in the autocomplete and related tags display
