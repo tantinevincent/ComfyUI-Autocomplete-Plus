@@ -473,7 +473,7 @@ app.registerExtension({
                 max: 100,
                 step: 5,
             },
-            defaultValue: 20,
+            defaultValue: 100,
             category: [name, "Related Tags", "Max related tags"],
             onChange: (newVal, oldVal) => {
                 settingValues.maxRelatedTags = newVal;

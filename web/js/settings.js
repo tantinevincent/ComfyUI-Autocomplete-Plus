@@ -16,7 +16,7 @@ export const settingValues = {
 
     // Related tags feature settings
     enableRelatedTags: true,
-    maxRelatedTags: 20,
+    maxRelatedTags: 100,
     relatedTagsDisplayPosition: 'horizontal', // 'horizontal' or 'vertical'
     relatedTagsTriggerMode: 'click', // Options: 'click', 'ctrl+Click'
     relatedTagsCharacterAppearance: true, // Character/copyright tags show frequent general tags
