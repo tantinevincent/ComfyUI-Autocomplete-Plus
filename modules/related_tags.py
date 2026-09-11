@@ -14,6 +14,15 @@ USER_AGENT = "Autocomplete-Plus/1.11"
 CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 CACHE_FETCH_LIMIT = 100
 REQUEST_TIMEOUT_SECONDS = 10
+DEFAULT_ORDER = "jaccard"
+ALLOWED_ORDERS = ("jaccard", "cosine", "frequency", "overlap")
+ALLOWED_CATEGORIES = ("general", "artist", "copyright", "character", "meta")
+SIMILARITY_KEYS = {
+    "jaccard": "jaccard_similarity",
+    "cosine": "cosine_similarity",
+    "frequency": "frequency",
+    "overlap": "overlap_coefficient",
+}
 
 _session = None
 
@@ -35,8 +44,19 @@ async def _get_session():
     return _session
 
 
-def _cache_path(query: str) -> str:
-    digest = hashlib.sha256(query.encode("utf-8")).hexdigest()
+def normalize_order(order) -> str:
+    value = str(order or "").strip().lower()
+    return value if value in ALLOWED_ORDERS else DEFAULT_ORDER
+
+
+def normalize_category(category) -> str:
+    value = str(category or "").strip().lower()
+    return value if value in ALLOWED_CATEGORIES else ""
+
+
+def _cache_path(query: str, category: str = "", order: str = DEFAULT_ORDER) -> str:
+    key = f"{query}\0{category}\0{order}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(RELATED_TAGS_CACHE_DIR, f"{digest}.json")
 
 
@@ -48,8 +68,8 @@ def _ensure_cache_dir() -> None:
     os.makedirs(RELATED_TAGS_CACHE_DIR, exist_ok=True)
 
 
-def _read_cache(query: str):
-    path = _cache_path(query)
+def _read_cache(query: str, category: str = "", order: str = DEFAULT_ORDER):
+    path = _cache_path(query, category, order)
     if not os.path.exists(path):
         return None
 
@@ -75,11 +95,13 @@ def _read_cache(query: str):
     return tags
 
 
-def _write_cache(query: str, tags: list) -> None:
+def _write_cache(query: str, tags: list, category: str = "", order: str = DEFAULT_ORDER) -> None:
     _ensure_cache_dir()
-    path = _cache_path(query)
+    path = _cache_path(query, category, order)
     payload = {
         "query": query,
+        "category": category,
+        "order": order,
         "fetchedAt": _now_ms(),
         "tags": tags,
     }
@@ -90,15 +112,21 @@ def _write_cache(query: str, tags: list) -> None:
         print(f"[Autocomplete-Plus] Failed to write related tags cache for '{query}': {e}")
 
 
-def _similarity_from_item(item: dict) -> float:
-    for key in ("jaccard_similarity", "cosine_similarity", "frequency"):
+def _similarity_from_item(item: dict, order: str = DEFAULT_ORDER) -> float:
+    preferred = SIMILARITY_KEYS.get(order, "jaccard_similarity")
+    keys = (preferred, "jaccard_similarity", "cosine_similarity", "overlap_coefficient", "frequency")
+    seen = set()
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
         value = item.get(key)
         if isinstance(value, (int, float)):
             return float(value)
     return 0.0
 
 
-def normalize_related_tags_payload(payload) -> list:
+def normalize_related_tags_payload(payload, order: str = DEFAULT_ORDER) -> list:
     """Parse Danbooru related_tag.json into a list of {tag, category, count, similarity}."""
     related = None
     if isinstance(payload, dict):
@@ -135,17 +163,17 @@ def normalize_related_tags_payload(payload) -> list:
             name = tag_obj.get("name")
             category = tag_obj.get("category", 0)
             count = tag_obj.get("post_count", tag_obj.get("count", 0))
-            similarity = _similarity_from_item(item)
+            similarity = _similarity_from_item(item, order)
         elif isinstance(tag_obj, str):
             name = tag_obj
             category = item.get("category", 0)
             count = item.get("post_count", item.get("count", 0))
-            similarity = _similarity_from_item(item)
+            similarity = _similarity_from_item(item, order)
         else:
             name = item.get("name")
             category = item.get("category", 0)
             count = item.get("post_count", item.get("count", 0))
-            similarity = _similarity_from_item(item)
+            similarity = _similarity_from_item(item, order)
 
         if not name:
             continue
@@ -172,12 +200,14 @@ def normalize_related_tags_payload(payload) -> list:
     return results
 
 
-async def fetch_related_tags_from_danbooru(query: str) -> list:
+async def fetch_related_tags_from_danbooru(query: str, category: str = "", order: str = DEFAULT_ORDER) -> list:
     params = {
         "query": query,
-        "order": "jaccard",
+        "order": order,
         "limit": str(CACHE_FETCH_LIMIT),
     }
+    if category:
+        params["category"] = category
     session = await _get_session()
     try:
         async with session.get(DANBOORU_RELATED_TAGS_URL, params=params) as response:
@@ -192,14 +222,16 @@ async def fetch_related_tags_from_danbooru(query: str) -> list:
     except (ClientError, TimeoutError) as error:
         raise DanbooruHttpError(0, str(error)) from error
 
-    return normalize_related_tags_payload(payload)
+    return normalize_related_tags_payload(payload, order)
 
 
-async def get_related_tags(query: str, limit: int) -> list:
-    cached = _read_cache(query)
+async def get_related_tags(query: str, limit: int, category: str = "", order: str = DEFAULT_ORDER) -> list:
+    category = normalize_category(category)
+    order = normalize_order(order)
+    cached = _read_cache(query, category, order)
     if cached is not None:
         return cached[:limit]
 
-    tags = await fetch_related_tags_from_danbooru(query)
-    _write_cache(query, tags)
+    tags = await fetch_related_tags_from_danbooru(query, category, order)
+    _write_cache(query, tags, category, order)
     return tags[:limit]

@@ -71,6 +71,10 @@
     "AutocompletePlus_RelatedTags_Enable": {
         "name": "関連タグ機能の有効化"
     },
+    "AutocompletePlus_RelatedTags_CharacterAppearance": {
+        "name": "キャラクターの外見タグを表示",
+        "tooltip": "有効にすると、キャラクター／作品タグでは Jaccard 関連タグではなく、よく共起する一般タグ（髪色・目・服装など）を表示します。"
+    },
     "AutocompletePlus_Display_HideAlias": {
         "name": "エイリアスを非表示",
         "tooltip": "オートコンプリートと関連タグで表示されるエイリアス列を非表示にします"

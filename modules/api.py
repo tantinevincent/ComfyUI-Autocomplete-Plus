@@ -247,10 +247,12 @@ async def get_related_tags(request):
         return web.json_response({"error": "Invalid limit"}, status=400)
 
     limit = max(1, min(limit, rt.CACHE_FETCH_LIMIT))
+    category = rt.normalize_category(request.rel_url.query.get("category", ""))
+    order = rt.normalize_order(request.rel_url.query.get("order", rt.DEFAULT_ORDER))
 
     try:
-        tags = await rt.get_related_tags(query, limit)
-        return web.json_response({"query": query, "tags": tags})
+        tags = await rt.get_related_tags(query, limit, category=category, order=order)
+        return web.json_response({"query": query, "category": category, "order": order, "tags": tags})
     except rt.DanbooruHttpError as e:
         status_label = e.status if e.status else "connection"
         print(f"[Autocomplete-Plus] Danbooru related tags HTTP error for '{query}': {status_label}")

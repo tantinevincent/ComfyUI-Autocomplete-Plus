@@ -71,6 +71,10 @@
     "AutocompletePlus_RelatedTags_Enable": {
         "name": "启用相关标签"
     },
+    "AutocompletePlus_RelatedTags_CharacterAppearance": {
+        "name": "角色显示特征标签",
+        "tooltip": "启用时，角色与作品标签会显示常见的一般特征（发色、瞳色、服装等），而非 Jaccard 相关标签。"
+    },
     "AutocompletePlus_Display_HideAlias": {
         "name": "隐藏别名",
         "tooltip": "隐藏自动完成和相关标签显示中的别名列"

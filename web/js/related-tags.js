@@ -67,6 +67,29 @@ function enrichRelatedTags(rawTags) {
 }
 
 /**
+ * Look up Danbooru tag metadata, resolving aliases when present.
+ * @param {string} tag
+ * @returns {TagData|null}
+ */
+function getDanbooruTagData(tag) {
+    const data = autoCompleteData[TagSource.Danbooru];
+    if (!data?.tagMap) return null;
+    const canonical = data.aliasMap?.get(tag) || tag;
+    return data.tagMap.get(canonical) || null;
+}
+
+/**
+ * Character and copyright tags use frequent general tags (appearance) when enabled.
+ * @param {string} tag
+ * @returns {boolean}
+ */
+function shouldFetchAppearanceTags(tag) {
+    if (!settingValues.relatedTagsCharacterAppearance) return false;
+    const local = getDanbooruTagData(tag);
+    return local?.categoryText === 'character' || local?.categoryText === 'copyright';
+}
+
+/**
  * Fetches related tags from the ComfyUI proxy (disk-cached on the server).
  * @param {string} tag
  * @param {AbortSignal} [signal]
@@ -77,6 +100,10 @@ async function fetchRelatedTags(tag, signal) {
         query: tag,
         limit: String(settingValues.maxRelatedTags)
     });
+    if (shouldFetchAppearanceTags(tag)) {
+        params.set('category', 'general');
+        params.set('order', 'frequency');
+    }
 
     const response = await fetch(`/autocomplete-plus/related-tags?${params.toString()}`, { signal });
     if (!response.ok) {

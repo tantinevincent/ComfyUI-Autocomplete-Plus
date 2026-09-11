@@ -58,6 +58,7 @@ When you select any tag in a text input area, a list of related tags from the [D
 - Tags that have already been entered are displayed grayed out. If you try to insert a grayed-out tag, the already entered tag will instead be selected.
 - You can display related tags for the cursor position by pressing `Ctrl+Shift+Space`.
 - Related tags are cached under `data/related-tags/` for 7 days. Delete that folder to force a refresh. The first lookup (and lookups after expiry) requires internet access.
+- Character and copyright tags show frequent general (appearance) tags by default. Disable **Appearance Tags for Characters** in settings to use Jaccard related tags instead.
 
 ## Auto Formatter
 
@@ -172,6 +173,7 @@ For example, by preparing the following CSV, you can quickly insert correspondin
 - **Max related tags**: Maximum number of related tags to display.
 - **Default Display Position**: Default display position when ComfyUI starts.
 - **Related Tags Trigger Mode**: Which action will trigger displaying related tags for the entered tag (click only, Ctrl+click)
+- **Appearance Tags for Characters**: When enabled, character and copyright tags show frequent general tags (hair, eyes, clothing) instead of Jaccard-related tags.
 
 ### Display
 
