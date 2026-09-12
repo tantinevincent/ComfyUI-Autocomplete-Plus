@@ -334,6 +334,13 @@ body.dark-theme,
   background-color: var(--border-color);
 }
 
+.related-tags-sort-toggle {
+  min-width: 1.75em;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 #related-tags-list {
   display: grid;
   box-shadow: 0 2px 8px rgb(0 0 0 / 30%);

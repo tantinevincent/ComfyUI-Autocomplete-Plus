@@ -99,6 +99,19 @@ function shouldFetchAppearanceTags(tag) {
 }
 
 /**
+ * Effective Danbooru related-tag sort. `auto` follows appearance tags (frequency) vs Jaccard.
+ * @param {string} tag
+ * @returns {'frequency'|'jaccard'}
+ */
+function getRelatedTagsSortOrder(tag) {
+    const explicit = settingValues.relatedTagsSortOrder;
+    if (explicit === 'frequency' || explicit === 'jaccard') {
+        return explicit;
+    }
+    return shouldFetchAppearanceTags(tag) ? 'frequency' : 'jaccard';
+}
+
+/**
  * Fetches related tags from the ComfyUI proxy (disk-cached on the server).
  * @param {string} tag
  * @param {AbortSignal} [signal]
@@ -107,11 +120,11 @@ async function fetchRelatedTags(tag, signal) {
     const startTime = performance.now();
     const params = new URLSearchParams({
         query: tag,
-        limit: String(settingValues.maxRelatedTags)
+        limit: String(settingValues.maxRelatedTags),
+        order: getRelatedTagsSortOrder(tag),
     });
     if (shouldFetchAppearanceTags(tag)) {
         params.set('category', APPEARANCE_RELATED_CATEGORIES.join(','));
-        params.set('order', 'frequency');
     }
 
     const response = await fetch(`/autocomplete-plus/related-tags?${params.toString()}`, { signal });
@@ -262,6 +275,20 @@ class RelatedTagsUI {
             e.stopPropagation();
         });
         this.headerControls.appendChild(this.toggleLayoutBtn);
+
+        this.toggleSortBtn = document.createElement('button');
+        this.toggleSortBtn.className = 'related-tags-sort-toggle';
+        this.toggleSortBtn.addEventListener('click', (e) => {
+            const current = getRelatedTagsSortOrder(this.currentTag);
+            settingValues.relatedTagsSortOrder = current === 'frequency' ? 'jaccard' : 'frequency';
+            this.#updateHeader();
+            if (this.target) {
+                this.show(this.target);
+            }
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        this.headerControls.appendChild(this.toggleSortBtn);
 
         // Create pin button
         this.isPinned = false;
@@ -541,6 +568,12 @@ class RelatedTagsUI {
         this.toggleLayoutBtn.innerHTML = settingValues.relatedTagsDisplayPosition === 'vertical'
             ? '↔️' // Click to change display horizontally
             : '↕️'; // Click to change display vertically
+
+        const sortOrder = getRelatedTagsSortOrder(this.currentTag);
+        this.toggleSortBtn.textContent = sortOrder === 'frequency' ? 'Fr' : 'Jc';
+        this.toggleSortBtn.title = sortOrder === 'frequency'
+            ? 'Sort: Frequency (click for Jaccard)'
+            : 'Sort: Jaccard (click for Frequency)';
     }
 
     /**
@@ -640,7 +673,7 @@ class RelatedTagsUI {
         similarity.textContent = `${(tagData.similarity * 100).toFixed(2)}%`;
 
         // Create tooltip with more info
-        let tooltipText = `Similarity: ${(tagData.similarity * 100).toFixed(2)}%\nCount: ${tagData.count}\nCategory: ${categoryText}`;
+        let tooltipText = `${getRelatedTagsSortOrder(this.currentTag) === 'frequency' ? 'Frequency' : 'Jaccard'}: ${(tagData.similarity * 100).toFixed(2)}%\nCount: ${tagData.count}\nCategory: ${categoryText}`;
         if (aliasText.length > 0) {
             tooltipText += `\nAlias: ${aliasText}`;
         }

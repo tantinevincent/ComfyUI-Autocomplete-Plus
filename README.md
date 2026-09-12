@@ -54,6 +54,7 @@ When you select any tag in a text input area, a list of related tags from the [D
 - The display position is primarily at the bottom of the text area and automatically adjusts vertically based on available space.
   - You can switch between vertical and horizontal display positions using the "↕️|↔️" button in the header.
 - You can toggle the pinned state of the displayed related tags using the "📌|🎯" button in the header. To close the UI when pinned, press the Esc key.
+- You can switch the related-tag sort between Frequency and Jaccard using the "Fr|Jc" button in the header. Each sort is cached separately.
 - Clicking the tag in the header opens the tag's Wiki page.
 - Tags that have already been entered are displayed grayed out. If you try to insert a grayed-out tag, the already entered tag will instead be selected.
 - You can display related tags for the cursor position by pressing `Ctrl+Shift+Space`.
