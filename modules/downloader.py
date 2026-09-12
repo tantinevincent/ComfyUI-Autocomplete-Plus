@@ -1,79 +1,184 @@
-import os
+import csv
+import io
 import json
-import urllib.request
-import urllib.error
+import os
 import shutil
 import sys
-from datetime import datetime, timezone, timedelta
-from email.utils import parsedate_to_datetime
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
 from tqdm import tqdm
 
-# --- File Definitions ---
-
-# Get the absolute path to the "data" directory
 DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"))
 TEMP_DOWNLOAD_DIR = os.path.join(DATA_DIR, ".download")
 
-# --- Metadata Constants ---
 CSV_META_FILE_NAME = "csv_meta.json"
 CSV_META_FILE = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", CSV_META_FILE_NAME))
 
+GITHUB_TAG_REPO = "tantinevincent/tagdb-updater"
+GITHUB_TAG_BRANCH = "main"
+GITHUB_DIST_BASE = f"https://raw.githubusercontent.com/{GITHUB_TAG_REPO}/{GITHUB_TAG_BRANCH}/dist"
+OUTPUT_CSV_NAME = "danbooru_tags.csv"
+USER_AGENT = "Autocomplete-Plus/1.11"
+
 DEFAULT_CSV_METADATA = {
-    "version": 1,
+    "version": 2,
     "check_updates_on_startup": True,
-    "hf_datasets": [
-        {
-            "hf_dataset_id": "newtextdoc1111/danbooru-tag-csv",
-            "last_remote_check_timestamp": None,
-            "csv_files": [
-                {
-                    "file_name": "danbooru_tags.csv",
-                    "last_download": None,
-                    "last_modified_on_hf": None,
-                },
-            ],
-        }
-    ],
+    "github_tag_source": {
+        "repo": GITHUB_TAG_REPO,
+        "branch": GITHUB_TAG_BRANCH,
+        "files": ["danbooru.csv", "danbooru-ja.csv"],
+        "output": OUTPUT_CSV_NAME,
+        "last_generated_at": None,
+        "last_download": None,
+        "last_remote_check_timestamp": None,
+    },
 }
 
-# --- HuggingFace Constants ---
-HUGGINGFACE_URL = "https://huggingface.co"
 
-
-# --- Helper Functions ---
 def get_file_path(file_name: str) -> str:
-    """Returns the full local path for a given file_name."""
     return os.path.join(DATA_DIR, file_name)
 
 
 def get_temp_download_path(file_name: str) -> str:
-    """Returns the full temporary download path for a given file_name."""
     return os.path.join(TEMP_DOWNLOAD_DIR, file_name)
 
 
 def check_file_valid(file_path):
-    """Checks if a file is valid by verifying its existence and size."""
     return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
 
+def normalize_tag_name(name: str) -> str:
+    name = (name or "").strip().replace(" ", "_")
+    out = []
+    i = 0
+    while i < len(name):
+        if name[i] == "\\" and i + 1 < len(name):
+            out.append(name[i : i + 2])
+            i += 2
+            continue
+        if name[i] in "()":
+            out.append("\\" + name[i])
+        else:
+            out.append(name[i])
+        i += 1
+    return "".join(out)
+
+
+def split_aliases(value: str) -> list:
+    if not value:
+        return []
+    parts = []
+    for item in csv.reader([value]).__next__():
+        text = item.strip()
+        if text:
+            parts.append(text)
+    return parts
+
+
+def merge_alias_lists(*groups) -> str:
+    seen = set()
+    ordered = []
+    for group in groups:
+        for alias in group:
+            if alias not in seen:
+                seen.add(alias)
+                ordered.append(alias)
+    return ",".join(ordered)
+
+
+def parse_tag_rows(text: str, has_japanese_column: bool) -> dict:
+    rows = {}
+    reader = csv.reader(io.StringIO(text))
+    for raw in reader:
+        if not raw or not raw[0].strip():
+            continue
+        if raw[0].strip().lower() in ("tag", "t"):
+            continue
+        if len(raw) < 3:
+            continue
+
+        tag = normalize_tag_name(raw[0])
+        if not tag:
+            continue
+
+        try:
+            category = int(raw[1].strip()) if raw[1].strip() else 0
+        except ValueError:
+            category = 0
+
+        try:
+            count = int(raw[2].strip()) if raw[2].strip() else 0
+        except ValueError:
+            count = 0
+
+        aliases = split_aliases(raw[3]) if len(raw) > 3 else []
+        japanese = split_aliases(raw[4]) if has_japanese_column and len(raw) > 4 else []
+
+        existing = rows.get(tag)
+        if existing is None:
+            rows[tag] = {
+                "tag": tag,
+                "category": category,
+                "count": count,
+                "aliases": aliases,
+                "japanese": japanese,
+            }
+            continue
+
+        existing["count"] = max(existing["count"], count)
+        existing["aliases"] = split_aliases(merge_alias_lists(existing["aliases"], aliases))
+        existing["japanese"] = split_aliases(merge_alias_lists(existing["japanese"], japanese))
+        if existing["category"] == 0 and category:
+            existing["category"] = category
+
+    return rows
+
+
+def merge_tag_sources(english_csv: str, japanese_csv: str) -> list:
+    english_rows = parse_tag_rows(english_csv, has_japanese_column=False)
+    japanese_rows = parse_tag_rows(japanese_csv, has_japanese_column=True)
+
+    for tag, row in japanese_rows.items():
+        existing = english_rows.get(tag)
+        if existing is None:
+            english_rows[tag] = row
+            continue
+        existing["count"] = max(existing["count"], row["count"])
+        existing["aliases"] = split_aliases(merge_alias_lists(existing["aliases"], row["aliases"]))
+        existing["japanese"] = split_aliases(merge_alias_lists(existing["japanese"], row["japanese"]))
+        if existing["category"] == 0 and row["category"]:
+            existing["category"] = row["category"]
+
+    merged = []
+    for row in english_rows.values():
+        alias = merge_alias_lists(row["aliases"], row["japanese"])
+        merged.append((row["tag"], row["category"], row["count"], alias))
+
+    merged.sort(key=lambda item: (-item[2], item[0]))
+    return merged
+
+
+def write_danbooru_tags_csv(path: str, rows: list) -> None:
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["tag", "category", "count", "alias"])
+        writer.writerows(rows)
+
+
 class Downloader:
-    """
-    Downloader class to manage downloading and checking of CSV files from HuggingFace.
-    """
+    """Download Danbooru tag CSVs from GitHub and merge them for autocomplete."""
 
     def __init__(self):
-        """Initializes the Downloader."""
         self.csv_meta_file_exists_at_start = False
-
         self._ensure_directories_exist()
         self.metadata = self._load_metadata()
 
     def get_default_csv_metadata(self):
-        """Returns the default CSV metadata."""
         return json.loads(json.dumps(DEFAULT_CSV_METADATA))
 
-    def _load_metadata(self) -> list:
-        """Loads metadata from CSV_META_FILE. Returns default if not found or error."""
+    def _load_metadata(self) -> dict:
         default_metadata = self.get_default_csv_metadata()
 
         if not os.path.exists(CSV_META_FILE):
@@ -84,102 +189,72 @@ class Downloader:
             with open(CSV_META_FILE, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
 
-                if not isinstance(metadata, dict) or metadata.get("version") != DEFAULT_CSV_METADATA["version"]:
-                    print(
-                        f"[Autocomplete-Plus] Metadata version mismatch. Expected {DEFAULT_CSV_METADATA['version']}, "
-                        f"found {metadata.get('version')}. Using default metadata."
-                    )
-                    return default_metadata
-                else:
-                    self.csv_meta_file_exists_at_start = True
-                    return self._strip_cooccurrence_files(metadata)
+            if not isinstance(metadata, dict) or metadata.get("version") != DEFAULT_CSV_METADATA["version"]:
+                print(
+                    f"[Autocomplete-Plus] Metadata version mismatch. Expected {DEFAULT_CSV_METADATA['version']}, "
+                    f"found {metadata.get('version') if isinstance(metadata, dict) else None}. Using default metadata."
+                )
+                if isinstance(metadata, dict) and "check_updates_on_startup" in metadata:
+                    default_metadata["check_updates_on_startup"] = metadata["check_updates_on_startup"]
+                return default_metadata
 
-        except (IOError, json.JSONDecodeError) as e:
+            self.csv_meta_file_exists_at_start = True
+            if "github_tag_source" not in metadata:
+                metadata["github_tag_source"] = default_metadata["github_tag_source"]
+            return metadata
+
+        except (OSError, json.JSONDecodeError) as e:
             print(f"[Autocomplete-Plus] Error loading metadata from {CSV_META_FILE}: {e}. Using default metadata.")
             return default_metadata
 
-    def _strip_cooccurrence_files(self, metadata: dict) -> dict:
-        """Removes cooccurrence CSV entries so they are no longer downloaded."""
-        for dataset in metadata.get("hf_datasets", []):
-            csv_files = dataset.get("csv_files", [])
-            dataset["csv_files"] = [
-                file_meta
-                for file_meta in csv_files
-                if "cooccurrence" not in str(file_meta.get("file_name", "")).lower()
-            ]
-        return metadata
-
     def _save_metadata(self):
-        """Saves metadata to CSV_META_FILE."""
         try:
             os.makedirs(os.path.dirname(CSV_META_FILE), exist_ok=True)
             with open(CSV_META_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.metadata, f, indent=2)
-        except IOError as e:
+        except OSError as e:
             print(f"[Autocomplete-Plus] Error saving metadata to {CSV_META_FILE}: {e}")
 
-    def _get_hf_file_last_modified(self, dataset_repo_id: str, hf_filename: str) -> str | None:
-        """
-        Retrieves the Last-Modified header for a file on HuggingFace and returns it as an ISO 8601 string.
-        hf_filename should be the full filename, e.g., "danbooru_tags.csv".
-        """
-        url = f"{HUGGINGFACE_URL}/datasets/{dataset_repo_id}/resolve/main/{hf_filename}"
+    def _github_source(self) -> dict:
+        source = self.metadata.setdefault("github_tag_source", self.get_default_csv_metadata()["github_tag_source"])
+        return source
+
+    def _dist_url(self, filename: str) -> str:
+        return f"{GITHUB_DIST_BASE}/{filename}"
+
+    def _http_get(self, url: str, timeout: int = 30):
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": USER_AGENT, "Accept": "*/*"},
+        )
+        return urllib.request.urlopen(req, timeout=timeout)
+
+    def _fetch_remote_generated_at(self) -> str | None:
+        url = self._dist_url("meta.json")
         try:
-            req = urllib.request.Request(
-                url,
-                method="HEAD",
-                headers={"User-Agent": "ComfyUI-Autocomplete-Plus (Python urllib)"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as response:
-                last_modified_http = response.getheader("Last-Modified")
-                if last_modified_http:
-                    dt_object = parsedate_to_datetime(last_modified_http)
-                    if dt_object.tzinfo is None or dt_object.tzinfo.utcoffset(dt_object) is None:
-                        dt_object = dt_object.replace(tzinfo=timezone.utc)
-                    else:
-                        dt_object = dt_object.astimezone(timezone.utc)
-                    return dt_object.isoformat()
-                else:
-                    print(f"[Autocomplete-Plus] 'Last-Modified' header not found for {hf_filename} at {url}")
-                    return None
-        except urllib.error.HTTPError as e:
-            print(f"[Autocomplete-Plus] HTTP error when checking last modified for {hf_filename}: {e.code} {e.reason}")
+            with self._http_get(url, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            generated_at = payload.get("generated_at")
+            if isinstance(generated_at, str) and generated_at.strip():
+                return generated_at.strip()
+            print(f"[Autocomplete-Plus] 'generated_at' missing in {url}")
             return None
-        except (urllib.error.URLError, TimeoutError) as e:
-            print(f"[Autocomplete-Plus] URL or network error when checking last modified for {hf_filename}: {e}")
-            return None
-        except Exception as e:
-            print(f"[Autocomplete-Plus] Unexpected error when checking last modified for {hf_filename}: {e}")
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            print(f"[Autocomplete-Plus] Failed to read GitHub tag meta.json: {e}")
             return None
 
-    def _download_file_with_progress_sync(self, hf_dataset_id, file_name: str, metadata_entry: dict):
-        """
-        Downloads a file synchronously with progress display to a temporary location.
-        """
-        download_url = f"{HUGGINGFACE_URL}/datasets/{hf_dataset_id}/resolve/main/{file_name}"
-        final_path = get_file_path(file_name)
-        temp_path = get_temp_download_path(file_name)
-        now_utc = datetime.now(timezone.utc).isoformat()
-
-        print(f"[Autocomplete-Plus] Attempting to download {file_name} from {download_url}")
-
-        downloaded_size = 0
-        total_size = 0
+    def _download_text_with_progress(self, filename: str) -> str | None:
+        url = self._dist_url(filename)
+        temp_path = get_temp_download_path(filename)
+        print(f"[Autocomplete-Plus] Attempting to download {filename} from {url}")
 
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
-            req = urllib.request.Request(
-                download_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 11.0; Win64)"},
-            )
-
-            with urllib.request.urlopen(req) as response:
+            with self._http_get(url, timeout=120) as response:
                 total_size_str = response.getheader("Content-Length")
                 total_size = int(total_size_str) if total_size_str else None
-                chunk_size = 8192
-
                 with (
                     open(temp_path, "wb") as f_out,
                     tqdm(
@@ -187,154 +262,110 @@ class Downloader:
                         unit="B",
                         unit_scale=True,
                         unit_divisor=1024,
-                        desc=f"[Autocomplete-Plus] Downloading {file_name}",
+                        desc=f"[Autocomplete-Plus] Downloading {filename}",
                         leave=False,
                         bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
                     ) as pbar,
                 ):
                     while True:
-                        chunk = response.read(chunk_size)
+                        chunk = response.read(8192)
                         if not chunk:
                             break
-
                         f_out.write(chunk)
-                        downloaded_size += len(chunk)
                         pbar.update(len(chunk))
 
             sys.stdout.write("\r" + " " * 100 + "\r")
             sys.stdout.flush()
 
-            shutil.move(temp_path, final_path)
-            print(f"[Autocomplete-Plus] Successfully downloaded and moved {file_name} to {final_path}.")
-            metadata_entry["last_download"] = now_utc
-
-        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            with open(temp_path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except (urllib.error.URLError, OSError, TimeoutError, UnicodeDecodeError) as e:
             sys.stdout.write("\n")
             sys.stdout.flush()
-            print(f"[Autocomplete-Plus] Error downloading {file_name}: {e}")
+            print(f"[Autocomplete-Plus] Error downloading {filename}: {e}")
+            return None
+        finally:
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
-                    print(f"[Autocomplete-Plus] Removed partially downloaded file from temp: {temp_path}")
-                except OSError as rm_e:
-                    print(f"[Autocomplete-Plus] Error removing temporary file {temp_path}: {rm_e}")
+                except OSError:
+                    pass
 
-            if os.path.exists(final_path):
-                try:
-                    file_size_at_final = os.path.getsize(final_path)
-                    if (
-                        file_size_at_final == 0
-                        or (total_size and total_size > 0 and file_size_at_final < total_size)
-                        or (not total_size and downloaded_size > 0 and file_size_at_final < downloaded_size)
-                    ):
-                        os.remove(final_path)
-                        print(
-                            f"[Autocomplete-Plus] Removed potentially corrupted file at final destination: {final_path}"
-                        )
-                except OSError as rm_e:
-                    print(f"[Autocomplete-Plus] Error removing potentially corrupted file {final_path}: {rm_e}")
+    def _should_refresh(self, remote_generated_at: str | None, force_check: bool) -> str | None:
+        output_path = get_file_path(OUTPUT_CSV_NAME)
+        source = self._github_source()
 
-    def _ensure_directories_exist(self):
-        """Ensures that DATA_DIR and TEMP_DOWNLOAD_DIR exist."""
-        os.makedirs(DATA_DIR, exist_ok=True)
-        os.makedirs(TEMP_DOWNLOAD_DIR, exist_ok=True)
+        if not check_file_valid(output_path):
+            return f"{OUTPUT_CSV_NAME} is missing or empty locally."
 
-    def _check_new_csv_from_hf_dataset(self, dataset_meta: dict, now_utc: datetime, force_check: bool = False):
-        """Checks HuggingFace for file updates and updates metadata."""
-        perform_hf_check = force_check
-
-        if perform_hf_check:
-            huggingface_dataset_id = dataset_meta["hf_dataset_id"]
-
-            print(f"[Autocomplete-Plus] Checking HuggingFace dataset {huggingface_dataset_id} for file updates...")
-            updated_all_hf_timestamps_successfully = True
-            for file_meta_info in dataset_meta["csv_files"]:
-                file_name_from_meta = file_meta_info.get("file_name")
-                if not file_name_from_meta:
-                    print("[Autocomplete-Plus] Warning: file_name missing in csv_files metadata entry.")
-                    updated_all_hf_timestamps_successfully = False
-                    continue
-
-                last_modified = self._get_hf_file_last_modified(huggingface_dataset_id, file_name_from_meta)
-                if last_modified:
-                    file_meta_info["last_modified_on_hf"] = last_modified
-                else:
-                    updated_all_hf_timestamps_successfully = False
-                    print(f"[Autocomplete-Plus] Failed to get remote last modified time for {file_name_from_meta}.")
-
-            if updated_all_hf_timestamps_successfully:
-                dataset_meta["last_remote_check_timestamp"] = now_utc.isoformat()
-            else:
-                print(
-                    "[Autocomplete-Plus] Could not update all remote timestamps from HuggingFace. Will try again later."
-                )
-
-    def _download_csv_files_if_needed(self, dataset_meta: dict):
-        """Downloads CSV files if they are missing, outdated, or previously failed."""
-
-        for file_meta_entry in dataset_meta["csv_files"]:
-            file_name = file_meta_entry.get("file_name")
-            if not file_name:
-                print("[Autocomplete-Plus] Warning: file_name missing in file_meta_entry during download check.")
-                continue
-
-            reason_for_download = self.check_csv_file_should_download(file_meta_entry, file_name)
-
-            if reason_for_download:
-                print(f"[Autocomplete-Plus] Queuing download for {file_name}: {reason_for_download}")
-                self._download_file_with_progress_sync(dataset_meta["hf_dataset_id"], file_name, file_meta_entry)
-
-    def check_csv_file_should_download(self, file_meta_entry, file_name):
-        """
-        Determines if a file should be downloaded based on its metadata and local status.
-        Returns a reason string if a download is needed, or None if no action is required.
-        """
-        local_file_path = get_file_path(file_name)
-
-        # If the CSV_META_FILE was not found initially, we need to download the file.
         if not self.csv_meta_file_exists_at_start:
-            return f"{CSV_META_FILE_NAME} was not found initially. Forcing download of {file_name}."
+            return f"{CSV_META_FILE_NAME} was not found or schema changed. Forcing download."
 
-        # If the file is empty or missing, we need to download it.
-        if not check_file_valid(local_file_path):
-            return f"File {file_name} is missing or empty locally."
+        if force_check:
+            return "Manual CSV update check requested."
 
-        # Check if the last modified date on HuggingFace is newer than the last download date
-        # Temporarily comment out until changes to remote files can be detected
-        # try:
-        #     last_download_dt = datetime.fromisoformat(file_meta_entry["last_download"])
-        #     hf_modified_dt = datetime.fromisoformat(file_meta_entry["last_modified_on_hf"])
-        #     if hf_modified_dt > last_download_dt:
-        #         return f"Remote file {file_name} is newer (HF: {hf_modified_dt}, Local Download: {last_download_dt})."
-        # except (ValueError, TypeError):
-        #     file_meta_entry["last_download"] = None
-        #     file_meta_entry["last_modified_on_hf"] = None
-        #     return f"Invalid timestamp format for {file_name}. Forcing download to ensure integrity."
-
-        # If the file is missing or empty, but the last download timestamp exists, we need to retry.
-        if not check_file_valid(local_file_path) and file_meta_entry.get("last_download") is not None:
-            return f"File {file_name} is missing or empty locally, but last download timestamp exists. Retrying."
+        last_generated = source.get("last_generated_at")
+        if remote_generated_at and last_generated != remote_generated_at:
+            return f"Remote tag dump is newer ({remote_generated_at} vs {last_generated})."
 
         return None
 
-    def run_check_and_download(self, force_check: bool = False):
-        """
-        Orchestrates the process of checking for updates and downloading CSV files.
-        This is the main entry point for the downloader logic.
+    def _download_and_merge(self, remote_generated_at: str | None) -> bool:
+        english_csv = self._download_text_with_progress("danbooru.csv")
+        japanese_csv = self._download_text_with_progress("danbooru-ja.csv")
+        if not english_csv or not japanese_csv:
+            print("[Autocomplete-Plus] Skipping merge because one or more GitHub CSV downloads failed.")
+            return False
 
-        Args:
-            force_check: If True, forces a check of HuggingFace regardless of the last check timestamp.
-        """
-        # If check_updates_on_startup is False and force_check is not set, skip the check
+        print("[Autocomplete-Plus] Merging danbooru.csv and danbooru-ja.csv into danbooru_tags.csv...")
+        rows = merge_tag_sources(english_csv, japanese_csv)
+        if not rows:
+            print("[Autocomplete-Plus] Merge produced no tag rows.")
+            return False
+
+        output_path = get_file_path(OUTPUT_CSV_NAME)
+        temp_output = get_temp_download_path(OUTPUT_CSV_NAME)
+        try:
+            write_danbooru_tags_csv(temp_output, rows)
+            shutil.move(temp_output, output_path)
+        except OSError as e:
+            print(f"[Autocomplete-Plus] Failed to write {OUTPUT_CSV_NAME}: {e}")
+            if os.path.exists(temp_output):
+                try:
+                    os.remove(temp_output)
+                except OSError:
+                    pass
+            return False
+
+        now_utc = datetime.now(timezone.utc).isoformat()
+        source = self._github_source()
+        source["last_download"] = now_utc
+        if remote_generated_at:
+            source["last_generated_at"] = remote_generated_at
+        print(f"[Autocomplete-Plus] Wrote {len(rows)} tags to {output_path}.")
+        return True
+
+    def _ensure_directories_exist(self):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(TEMP_DOWNLOAD_DIR, exist_ok=True)
+
+    def run_check_and_download(self, force_check: bool = False):
         if not (self.metadata.get("check_updates_on_startup", True) or force_check):
             print('[Autocomplete-Plus] "check_updates_on_startup" is disabled. Skipping CSV update check and download.')
             return
 
         now_utc = datetime.now(timezone.utc)
+        source = self._github_source()
+        print(f"[Autocomplete-Plus] Checking GitHub {GITHUB_TAG_REPO} for tag CSV updates...")
 
-        datasets_meta = self.metadata.get("hf_datasets", [])
-        for dataset_meta in datasets_meta:
-            self._check_new_csv_from_hf_dataset(dataset_meta, now_utc, force_check)
-            self._download_csv_files_if_needed(dataset_meta)
+        remote_generated_at = self._fetch_remote_generated_at()
+        source["last_remote_check_timestamp"] = now_utc.isoformat()
+
+        reason = self._should_refresh(remote_generated_at, force_check)
+        if reason:
+            print(f"[Autocomplete-Plus] Queuing tag CSV refresh: {reason}")
+            self._download_and_merge(remote_generated_at)
+        else:
+            print("[Autocomplete-Plus] Local danbooru_tags.csv is up to date.")
 
         self._save_metadata()

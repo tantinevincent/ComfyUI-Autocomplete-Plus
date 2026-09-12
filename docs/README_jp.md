@@ -24,13 +24,13 @@
 ### ComfyUI-Manager
 
 1. [ComfyUI-Manager](https://github.com/Comfy-Org/ComfyUI-Manager) で `Autocomplete-Plus` と検索して表示されたカスタムノードをインストールし、再起動します
-2. 起動時に必要な CSV データが HuggingFace から自動的にダウンロードされます
+2. 起動時に必要な CSV データが GitHub から自動的にダウンロードされます
 
 ### マニュアル
 
 1. このリポジトリを ComfyUI の `custom_nodes` フォルダにクローンまたはコピーします  
     `git clone https://github.com/newtextdoc1111/ComfyUI-Autocomplete-Plus.git`
-2. ComfyUI を起動します。起動時に必要な CSV データが HuggingFace から自動的にダウンロードされます
+2. ComfyUI を起動します。起動時に必要な CSV データが GitHub から自動的にダウンロードされます
 
 ## オートコンプリート
 
@@ -75,21 +75,17 @@
 
 ## CSV データ
 
-オートコンプリートには基本となる CSV データが1つ必要です。これは [HuggingFace](https://huggingface.co/datasets/newtextdoc1111/danbooru-tag-csv) で管理されており、 ComfyUI にインストール後の初回起動時に自動でダウンロードされるのでセットアップは不要です。
-基本 CSV ファイルはHuggingFaceで公開されているDanbooruデータセットを元にしているので、Danbooruサイトの投稿数と異なる場合があります。関連タグはこの CSV ではなく Danbooru API から取得します。
+オートコンプリートには基本となる CSV データが1つ必要です。これは [tantinevincent/tagdb-updater](https://github.com/tantinevincent/tagdb-updater) の `danbooru.csv` と `danbooru-ja.csv` から生成され、ComfyUI にインストール後の初回起動時に自動でダウンロード・結合されます。
+日本語は Danbooru wiki の `other_names` とコミュニティ翻訳 CSV に由来します。投稿数は Danbooru サイトと異なる場合があります。関連タグはこの CSV ではなく Danbooru API から取得します。
 
 > [!IMPORTANT]
 > 基本 CSV にはSFW, NSFW両方のタグが含まれています。
 
 **danbooru_tags.csv**
 
-タグ名、カテゴリ、投稿数、エイリアス（日本語、中国語、韓国語を含む）の情報を持つオートコンプリート用のタグ情報 CSV ファイルです。このカラム構成は [DominikDoom/a1111-sd-webui-tagcomplete](https://github.com/DominikDoom/a1111-sd-webui-tagcomplete) で使用されているものと同じです。
+タグ名、カテゴリ、投稿数、エイリアス（日本語を含む）の情報を持つオートコンプリート用のタグ情報 CSV ファイルです。このカラム構成は [DominikDoom/a1111-sd-webui-tagcomplete](https://github.com/DominikDoom/a1111-sd-webui-tagcomplete) で使用されているものと同じで、`tag,category,count,alias` です。
 
-タグ情報は以下の条件でフィルタリングされています。
-- 投稿数100件以上
-- 投稿画像のスコアが5以上
-- カテゴリが `general, character, copyright` のいずれか
-- タグ名に `(cosplay)` が含まれていない
+データは Danbooru から週次で生成されます。作者・作品・キャラクター・一般・メタタグが含まれます。
 
 ### e621 CSV
 
@@ -204,7 +200,7 @@ worst_quality,5,9999999,
 **変更後の `csv_meta.json`：**
 ```json
 {
-  "version": 1,
+  "version": 2,
   "check_updates_on_startup": false,
   ...
 }

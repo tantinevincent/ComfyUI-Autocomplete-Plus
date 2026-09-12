@@ -26,13 +26,13 @@
 ### ComfyUI-Manager
 
 1. Search for `Autocomplete-Plus` in [ComfyUI-Manager](https://github.com/Comfy-Org/ComfyUI-Manager), install the custom node that appears, and restart.
-2. The necessary CSV data will be automatically downloaded from HuggingFace upon startup.
+2. The necessary CSV data will be automatically downloaded from GitHub upon startup.
 
 ### Manual
 
 1. Clone or copy this repository into the `custom_nodes` folder of ComfyUI.
    `git clone https://github.com/newtextdoc1111/ComfyUI-Autocomplete-Plus.git`
-2. Launch ComfyUI. The necessary CSV data will be automatically downloaded from HuggingFace upon startup.
+2. Launch ComfyUI. The necessary CSV data will be automatically downloaded from GitHub upon startup.
 
 ## Autocomplete
 
@@ -77,21 +77,17 @@ Detailed behavior is as follows:
 
 ## CSV Data
 
-A basic CSV data file is required for autocomplete. It is managed on [HuggingFace](https://huggingface.co/datasets/newtextdoc1111/danbooru-tag-csv) and is automatically downloaded when ComfyUI is first launched after installation, so no setup is required.  
-Since the CSV is based on the Danbooru dataset publicly available on HuggingFace, post counts may differ from the Danbooru website. Related tags are fetched from Danbooru and are not taken from this CSV.
+A basic CSV data file is required for autocomplete. It is built from [tantinevincent/tagdb-updater](https://github.com/tantinevincent/tagdb-updater) (`danbooru.csv` + `danbooru-ja.csv`) and is automatically downloaded and merged when ComfyUI is first launched after installation, so no setup is required.  
+Japanese names come from Danbooru wiki `other_names` plus community translation CSVs. Post counts may differ slightly from the Danbooru website. Related tags are fetched from Danbooru and are not taken from this CSV.
 
 > [!IMPORTANT]
 > The basic CSV contains both SFW and NSFW tags.
 
 **danbooru_tags.csv**
 
-This is a tag information CSV file for autocomplete, containing tag names, categories, post counts, and aliases (including Japanese, Chinese, and Korean). The column structure is the same as that used in [DominikDoom/a1111-sd-webui-tagcomplete](https://github.com/DominikDoom/a1111-sd-webui-tagcomplete).
+This is a tag information CSV file for autocomplete, containing tag names, categories, post counts, and aliases (including Japanese). The column structure is the same as that used in [DominikDoom/a1111-sd-webui-tagcomplete](https://github.com/DominikDoom/a1111-sd-webui-tagcomplete): `tag,category,count,alias`.
 
-Tag information is filtered under the following conditions:
-- Post count of 100 or more
-- Image score of 5 or more
-- Category is `general, character, or copyright`
-- Tag name does not contain `(cosplay)`
+The dump is generated weekly from Danbooru. Artist, copyright, character, general, and meta tags are included.
 
 ### e621 CSV
 
@@ -206,7 +202,7 @@ You can skip the check process during ComfyUI startup by following these steps:
 **`csv_meta.json` after modification:**
 ```json
 {
-  "version": 1,
+  "version": 2,
   "check_updates_on_startup": false,
   ...
 }

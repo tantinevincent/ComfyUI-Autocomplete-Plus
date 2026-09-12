@@ -75,11 +75,8 @@ def get_last_check_time_from_metadata():
         with open(dl.CSV_META_FILE, "r", encoding="utf-8") as f:
             metadata = json.load(f)
 
-        datasets = metadata.get("hf_datasets", [])
-        if datasets and len(datasets) > 0:
-            return datasets[0].get("last_remote_check_timestamp")
-
-        return None
+        source = metadata.get("github_tag_source") or {}
+        return source.get("last_remote_check_timestamp")
 
     except (IOError, json.JSONDecodeError) as e:
         print(f"[Autocomplete-Plus] Error reading csv_meta.json: {e}")
@@ -165,11 +162,11 @@ async def get_extra_tags_file(request):
 @server.PromptServer.instance.routes.post("/autocomplete-plus/csv/force-check-updates")
 async def force_check_csv_updates(request):
     """
-    Forces a check for CSV file updates from HuggingFace, ignoring cooldown.
+    Forces a check for CSV file updates from GitHub, ignoring cooldown.
     This allows users to manually trigger an update check at any time.
     """
     try:
-        print("[Autocomplete-Plus] Starting forced check for CSV updates from HuggingFace...")
+        print("[Autocomplete-Plus] Starting forced check for CSV updates from GitHub...")
 
         downloader = dl.Downloader()
         downloader.run_check_and_download(force_check=True)
@@ -207,7 +204,7 @@ async def get_last_check_time(_request):
         if last_check_time is not None:
             return web.json_response({"last_check_time": last_check_time})
         else:
-            return web.json_response({"last_check_time": None, "message": "No datasets found in metadata"})
+            return web.json_response({"last_check_time": None, "message": "No GitHub tag source found in metadata"})
 
     except (IOError, json.JSONDecodeError) as e:
         print(f"[Autocomplete-Plus] Error reading csv_meta.json: {e}")
