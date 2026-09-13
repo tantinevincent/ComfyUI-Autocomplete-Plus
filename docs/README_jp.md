@@ -49,7 +49,7 @@
 
 テキスト入力エリアの任意のタグを選択すると、[Danbooru related tags API](https://danbooru.donmai.us/wiki_pages/help%3Aapi) から取得した関連タグを一覧表示します。結果は `data/related-tags/` に7日間キャッシュされます。タグをクリックするか、キーボードの上下キーで選択後にEnterまたはTabキーでタグを挿入出来ます。UIは編集中のテキストエリアを基準に位置とサイズが自動で調整されます。
 
-- 表示位置は、テキストエリアの下部を基本とし、空きスペースに応じて上下に自動調整されます
+- 表示位置はデフォルトでテキストエリアの下（オートコンプリートと同様）です。下に十分な空きが無い場合は上に出ます
   - ヘッダーの「↕️|↔️」ボタンで上下と左右の表示位置に切り替えられます
 - ヘッダーの「📌|🎯」ボタンで表示する関連タグの固定状態を切り替えられます。固定状態で閉じたい場合はEscキーを押します
 - ヘッダーの「Fr|Jc」ボタンで Frequency と Jaccard の並び順を切り替えられます。並び順ごとに別キャッシュされます
@@ -166,7 +166,7 @@ worst_quality,5,9999999,
 
 - **Enable Related Tags**: 関連タグ機能の有効化/無効化
 - **Max related tags**: 関連タグの最大表示件数
-- **Default Display Position**: ComfyUI起動時のデフォルト表示位置
+- **Default Display Position**: ComfyUI起動時のデフォルト表示位置（`vertical` = テキストエリアの上下、`horizontal` = 左右）
 - **Related Tags Trigger Mode** : 入力済みのタグの関連タグを表示する際、どの操作をトリガーとするか（クリックのみ、Ctrl+クリック）
 - **Appearance Tags for Characters**: 有効にすると、キャラクター／作品タグでは Jaccard 関連タグではなく、出現頻度の高い一般・キャラクター・作品タグを表示します
 

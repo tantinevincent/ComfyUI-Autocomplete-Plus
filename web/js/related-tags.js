@@ -795,14 +795,13 @@ class RelatedTagsUI {
             // Vertical placement
             const topSpace = targetRect.top - margin.top;
             const bottomSpace = viewportHeight - targetRect.bottom - margin.bottom;
-            if (topSpace > bottomSpace) {
-                // Place above
-                area.height = Math.min(area.height, topSpace);
-                area.y = Math.max(targetRect.y - area.height, margin.top);
-            } else {
-                // Place below
+            const placeBelow = elemHeight <= bottomSpace || bottomSpace >= topSpace;
+            if (placeBelow) {
                 area.height = Math.min(area.height, bottomSpace);
                 area.y = targetRect.bottom;
+            } else {
+                area.height = Math.min(area.height, topSpace);
+                area.y = Math.max(targetRect.y - area.height, margin.top);
             }
 
             // Calculate width considering scrollbar width if vertical scrolling is needed

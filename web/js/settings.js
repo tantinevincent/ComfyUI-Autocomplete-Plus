@@ -17,7 +17,7 @@ export const settingValues = {
     // Related tags feature settings
     enableRelatedTags: true,
     maxRelatedTags: 100,
-    relatedTagsDisplayPosition: 'horizontal', // 'horizontal' or 'vertical'
+    relatedTagsDisplayPosition: 'vertical', // 'horizontal' or 'vertical'
     relatedTagsTriggerMode: 'click', // Options: 'click', 'ctrl+Click'
     relatedTagsCharacterAppearance: true, // Character/copyright tags filter to general, character, copyright
     relatedTagsSortOrder: 'auto', // 'auto' | 'frequency' | 'jaccard'

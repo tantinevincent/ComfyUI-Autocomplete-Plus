@@ -458,7 +458,7 @@ app.registerExtension({
             tooltip: "Display position (relative to Textarea).",
             type: "combo",
             options: ["horizontal", "vertical"],
-            defaultValue: "horizontal",
+            defaultValue: "vertical",
             category: [name, "Related Tags", "Display Position"],
             onChange: (newVal, oldVal) => {
                 settingValues.relatedTagsDisplayPosition = newVal;
