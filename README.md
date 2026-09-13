@@ -49,9 +49,9 @@ When you type in a text input area, tags that partially match the text are displ
 
 ![ss02](https://github.com/user-attachments/assets/854571cd-01eb-4e92-a118-2303bec0b175)
 
-When you select any tag in a text input area, a list of related tags from the [Danbooru related tags API](https://danbooru.donmai.us/wiki_pages/help%3Aapi) is displayed. Results are cached on disk under `data/related-tags/` for 7 days. You can insert a tag by clicking it or by selecting it with the up/down arrow keys and then pressing Enter or Tab. The UI's position and size are automatically adjusted based on the text area being edited.
+When you select any tag in a text input area, a list of related tags from the [Danbooru related tags API](https://danbooru.donmai.us/wiki_pages/help%3Aapi) is displayed. Results are cached on disk under `data/related-tags/` for 7 days. You can insert a tag by clicking it or by selecting it with the up/down arrow keys and then pressing Enter or Tab. The UI's position and size are automatically adjusted based on the caret.
 
-- The panel defaults to below the text area (like autocomplete). If there is not enough space below, it opens above.
+- The panel defaults to below the current line (like autocomplete). If there is not enough space below, it opens above.
   - You can switch between vertical and horizontal display positions using the "↕️|↔️" button in the header.
 - You can toggle the pinned state of the displayed related tags using the "📌|🎯" button in the header. To close the UI when pinned, press the Esc key.
 - You can switch the related-tag sort between Frequency and Jaccard using the "Fr|Jc" button in the header. Each sort is cached separately.
@@ -168,7 +168,7 @@ For example, by preparing the following CSV, you can quickly insert correspondin
 
 - **Enable Related Tags**: Enable/disable the related tags feature.
 - **Max related tags**: Maximum number of related tags to display.
-- **Default Display Position**: Default display position when ComfyUI starts (`vertical` = below/above the textarea, `horizontal` = beside it).
+- **Default Display Position**: Default display position when ComfyUI starts (`vertical` = below/above the current line, `horizontal` = beside the textarea).
 - **Related Tags Trigger Mode**: Which action will trigger displaying related tags for the entered tag (click only, Ctrl+click)
 - **Appearance Tags for Characters**: When enabled, character and copyright tags show frequent general, character, and copyright tags instead of Jaccard-related tags.
 

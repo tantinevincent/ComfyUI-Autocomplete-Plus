@@ -17,6 +17,8 @@ import {
     getCurrentTagRange,
     getViewportMargin,
     getScrollbarWidth,
+    getCaretCoordinates,
+    calculateElementOffset,
     IconSvgHtmlString,
     addWeightToLora,
     openTagWikiUrl
@@ -625,9 +627,9 @@ class AutocompleteUI {
         const viewportHeight = window.innerHeight;
         const margin = getViewportMargin();
 
-        const targetElmOffset = this.#calculateElementOffset(this.target);
+        const targetElmOffset = calculateElementOffset(this.target);
 
-        const { top: caretTop, left: caretLeft, lineHeight: caretLineHeight } = this.#getCaretCoordinates(this.target);
+        const { top: caretTop, left: caretLeft, lineHeight: caretLineHeight } = getCaretCoordinates(this.target);
 
         // Initial desired position: below the current text line where the caret is.
         let topPosition = targetElmOffset.top + ((caretTop - targetElmOffset.top) + caretLineHeight) * scale;
@@ -724,215 +726,6 @@ class AutocompleteUI {
         insertTagToTextArea(this.target, selectedTag);
 
         this.hide();
-    }
-
-    /**
-     * Gets the pixel coordinates of the caret in the input element.
-     * Uses a temporary div to calculate the position accurately.
-     * Based on https://github.com/component/textarea-caret-position
-     * @param {HTMLTextAreaElement} element The textarea element.
-     * @returns {{ top: number, left: number, lineHeight: number }}
-     */
-    #getCaretCoordinates(element) {
-        const properties = [
-            'direction', // RTL support
-            'boxSizing',
-            'width', // on Chrome and IE, exclude the scrollbar, so the mirror div wraps exactly as the textarea does
-            'height',
-            'overflowX',
-            'overflowY', // copy the scrollbar for IE
-
-            'borderTopWidth',
-            'borderRightWidth',
-            'borderBottomWidth',
-            'borderLeftWidth',
-            'borderStyle',
-
-            'paddingTop',
-            'paddingRight',
-            'paddingBottom',
-            'paddingLeft',
-
-            // https://developer.mozilla.org/en-US/docs/Web/CSS/font
-            'fontStyle',
-            'fontVariant',
-            'fontWeight',
-            'fontStretch',
-            'fontSize',
-            'fontSizeAdjust',
-            'lineHeight',
-            'fontFamily',
-
-            'textAlign',
-            'textTransform',
-            'textIndent',
-            'textDecoration', // might not make a difference, but better be safe
-
-            'letterSpacing',
-            'wordSpacing',
-
-            'tabSize',
-            'MozTabSize' // Firefox
-        ];
-
-        const isBrowser = typeof window !== 'undefined';
-        const isFirefox = isBrowser && window.mozInnerScreenX != null;
-
-        var debug = false;
-        if (debug) {
-            var el = document.querySelector("#input-textarea-caret-position-mirror-div");
-            if (el) el.parentNode.removeChild(el);
-        }
-
-        // The mirror div will replicate the textarea's style
-        const div = document.createElement('div');
-        div.id = 'input-textarea-caret-position-mirror-div';
-        document.body.appendChild(div);
-
-        const style = div.style;
-        const computed = window.getComputedStyle(element);
-        const isInput = element.nodeName === 'INPUT';
-
-        // Default textarea styles
-        style.whiteSpace = 'pre-wrap';
-        if (!isInput) style.wordWrap = 'break-word'; // only for textarea-s
-
-        // Position off-screen
-        style.position = 'absolute'; // required to return coordinates properly
-        if (!debug) style.visibility = 'hidden'; // not 'display: none' because we want rendering
-
-        // Transfer the element's properties to the div
-        properties.forEach(prop => {
-            if (isInput && prop === "lineHeight") {
-                // Special case for <input>s because text is rendered centered and line height may be != height
-                if (computed.boxSizing === "border-box") {
-                    var height = parseInt(computed.height);
-                    var outerHeight =
-                        parseInt(computed.paddingTop) +
-                        parseInt(computed.paddingBottom) +
-                        parseInt(computed.borderTopWidth) +
-                        parseInt(computed.borderBottomWidth);
-                    var targetHeight = outerHeight + parseInt(computed.lineHeight);
-                    if (height > targetHeight) {
-                        style.lineHeight = height - outerHeight + "px";
-                    } else if (height === targetHeight) {
-                        style.lineHeight = computed.lineHeight;
-                    } else {
-                        style.lineHeight = 0;
-                    }
-                } else {
-                    style.lineHeight = computed.height;
-                }
-            } else {
-                style[prop] = computed[prop];
-            }
-        });
-
-        // Calculate lineHeight more robustly
-        let computedLineHeight = computed.lineHeight;
-        let numericLineHeight;
-        if (computedLineHeight === 'normal') {
-            // Calculate fallback based on font size
-            // const fontSize = parseFloat(computed.fontSize);
-            // numericLineHeight = Math.round(fontSize * 1.2); // Common approximation
-            numericLineHeight = this.#calculateLineHeightPx(element.nodeName, computed);
-        } else {
-            numericLineHeight = parseFloat(computedLineHeight); // Use parseFloat for pixel values like "16px"
-        }
-
-        if (isFirefox) {
-            // Firefox lies about the overflow property for textareas: https://bugzilla.mozilla.org/show_bug.cgi?id=984275
-            if (element.scrollHeight > parseInt(computed.height)) style.overflowY = 'scroll';
-        } else {
-            style.overflow = 'hidden'; // for Chrome to not render a scrollbar; IE keeps overflowY = 'scroll'
-        }
-
-        div.textContent = element.value.substring(0, element.selectionStart);
-        // The second special handling for input type=text doesn't need to be copied:
-        // If isInput then usage is https://github.com/component/textarea-caret-position#usage-input-typetext
-
-        const span = document.createElement('span');
-        // Wrapping must be replicated *exactly*, including whitespace spaces and carriage returns
-        span.textContent = element.value.substring(element.selectionStart) || '.'; // || '.' because a completely empty faux span doesn't render at all
-        div.appendChild(span);
-
-        const coordinates = {
-            top: span.offsetTop + (parseInt(computed['borderTopWidth']) || 0),
-            left: span.offsetLeft + (parseInt(computed['borderLeftWidth']) || 0),
-            lineHeight: numericLineHeight // Use the calculated numeric lineHeight
-        };
-
-        // Calculate the bounding rect of the input element relative to the viewport
-        const rect = element.getBoundingClientRect();
-
-        // Adjust the coordinates to be relative to the viewport
-        coordinates.top = rect.top + element.scrollTop + coordinates.top;
-        coordinates.left = rect.left + element.scrollLeft + coordinates.left;
-
-        if (debug) {
-            span.style.backgroundColor = "#aaa";
-        } else {
-            document.body.removeChild(div);
-        }
-
-        return coordinates;
-    }
-
-    /**
-     * Returns calculated line-height of the given node in pixels.
-     */
-    #calculateLineHeightPx(nodeName, computedStyle) {
-        const body = document.body;
-        if (!body) return 0;
-
-        const tempNode = document.createElement(nodeName);
-        tempNode.innerHTML = "&nbsp;";
-        Object.assign(tempNode.style, {
-            fontSize: computedStyle.fontSize,
-            fontFamily: computedStyle.fontFamily,
-            padding: "0",
-            position: "absolute",
-        });
-        body.appendChild(tempNode);
-
-        // Make sure textarea has only 1 row
-        if (tempNode instanceof HTMLTextAreaElement) {
-            tempNode.rows = 1;
-        }
-
-        // Assume the height of the element is the line-height
-        const height = tempNode.offsetHeight;
-        body.removeChild(tempNode);
-
-        return height;
-    }
-
-    /**
-     * calculates the offset of the given element relative to the viewport.
-     * @param {HTMLElement} element
-     * @returns {{ top: number, left: number }}
-     */
-    #calculateElementOffset(element) {
-        const rect = element.getBoundingClientRect();
-        const owner = element.ownerDocument;
-        if (owner == null) {
-            throw new Error("Given element does not belong to document");
-        }
-
-        const { defaultView, documentElement } = owner;
-        if (defaultView == null) {
-            throw new Error("Given element does not belong to window");
-        }
-
-        const offset = {
-            top: rect.top + defaultView.pageYOffset,
-            left: rect.left + defaultView.pageXOffset,
-        };
-        if (documentElement) {
-            offset.top -= documentElement.clientTop;
-            offset.left -= documentElement.clientLeft;
-        }
-        return offset;
     }
 }
 

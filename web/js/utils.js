@@ -698,3 +698,180 @@ export function openTagWikiUrl(tagSource, tagName) {
 
     return false;
 }
+
+const CARET_MIRROR_STYLE_PROPERTIES = [
+    'direction',
+    'boxSizing',
+    'width',
+    'height',
+    'overflowX',
+    'overflowY',
+    'borderTopWidth',
+    'borderRightWidth',
+    'borderBottomWidth',
+    'borderLeftWidth',
+    'borderStyle',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'fontStyle',
+    'fontVariant',
+    'fontWeight',
+    'fontStretch',
+    'fontSize',
+    'fontSizeAdjust',
+    'lineHeight',
+    'fontFamily',
+    'textAlign',
+    'textTransform',
+    'textIndent',
+    'textDecoration',
+    'letterSpacing',
+    'wordSpacing',
+    'tabSize',
+    'MozTabSize'
+];
+
+/**
+ * Returns calculated line-height of the given node in pixels.
+ * @param {string} nodeName
+ * @param {CSSStyleDeclaration} computedStyle
+ * @returns {number}
+ */
+function calculateLineHeightPx(nodeName, computedStyle) {
+    const body = document.body;
+    if (!body) return 0;
+
+    const tempNode = document.createElement(nodeName);
+    tempNode.innerHTML = "&nbsp;";
+    Object.assign(tempNode.style, {
+        fontSize: computedStyle.fontSize,
+        fontFamily: computedStyle.fontFamily,
+        padding: "0",
+        position: "absolute",
+    });
+    body.appendChild(tempNode);
+
+    if (tempNode instanceof HTMLTextAreaElement) {
+        tempNode.rows = 1;
+    }
+
+    const height = tempNode.offsetHeight;
+    body.removeChild(tempNode);
+
+    return height;
+}
+
+/**
+ * Calculates the offset of the given element relative to the document.
+ * @param {HTMLElement} element
+ * @returns {{ top: number, left: number }}
+ */
+export function calculateElementOffset(element) {
+    const rect = element.getBoundingClientRect();
+    const owner = element.ownerDocument;
+    if (owner == null) {
+        throw new Error("Given element does not belong to document");
+    }
+
+    const { defaultView, documentElement } = owner;
+    if (defaultView == null) {
+        throw new Error("Given element does not belong to window");
+    }
+
+    const offset = {
+        top: rect.top + defaultView.pageYOffset,
+        left: rect.left + defaultView.pageXOffset,
+    };
+    if (documentElement) {
+        offset.top -= documentElement.clientTop;
+        offset.left -= documentElement.clientLeft;
+    }
+    return offset;
+}
+
+/**
+ * Gets the pixel coordinates of the caret in the input element, relative to the viewport.
+ * Uses a temporary div to calculate the position accurately.
+ * Based on https://github.com/component/textarea-caret-position
+ * @param {HTMLTextAreaElement|HTMLInputElement} element
+ * @returns {{ top: number, left: number, lineHeight: number }}
+ */
+export function getCaretCoordinates(element) {
+    const isBrowser = typeof window !== 'undefined';
+    const isFirefox = isBrowser && window.mozInnerScreenX != null;
+
+    const div = document.createElement('div');
+    div.id = 'input-textarea-caret-position-mirror-div';
+    document.body.appendChild(div);
+
+    const style = div.style;
+    const computed = window.getComputedStyle(element);
+    const isInput = element.nodeName === 'INPUT';
+
+    style.whiteSpace = 'pre-wrap';
+    if (!isInput) style.wordWrap = 'break-word';
+
+    style.position = 'absolute';
+    style.visibility = 'hidden';
+
+    CARET_MIRROR_STYLE_PROPERTIES.forEach(prop => {
+        if (isInput && prop === "lineHeight") {
+            if (computed.boxSizing === "border-box") {
+                const height = parseInt(computed.height);
+                const outerHeight =
+                    parseInt(computed.paddingTop) +
+                    parseInt(computed.paddingBottom) +
+                    parseInt(computed.borderTopWidth) +
+                    parseInt(computed.borderBottomWidth);
+                const targetHeight = outerHeight + parseInt(computed.lineHeight);
+                if (height > targetHeight) {
+                    style.lineHeight = height - outerHeight + "px";
+                } else if (height === targetHeight) {
+                    style.lineHeight = computed.lineHeight;
+                } else {
+                    style.lineHeight = 0;
+                }
+            } else {
+                style.lineHeight = computed.height;
+            }
+        } else {
+            style[prop] = computed[prop];
+        }
+    });
+
+    let computedLineHeight = computed.lineHeight;
+    let numericLineHeight;
+    if (computedLineHeight === 'normal') {
+        numericLineHeight = calculateLineHeightPx(element.nodeName, computed);
+    } else {
+        numericLineHeight = parseFloat(computedLineHeight);
+    }
+
+    if (isFirefox) {
+        if (element.scrollHeight > parseInt(computed.height)) style.overflowY = 'scroll';
+    } else {
+        style.overflow = 'hidden';
+    }
+
+    div.textContent = element.value.substring(0, element.selectionStart);
+
+    const span = document.createElement('span');
+    span.textContent = element.value.substring(element.selectionStart) || '.';
+    div.appendChild(span);
+
+    const coordinates = {
+        top: span.offsetTop + (parseInt(computed['borderTopWidth']) || 0),
+        left: span.offsetLeft + (parseInt(computed['borderLeftWidth']) || 0),
+        lineHeight: numericLineHeight
+    };
+
+    const rect = element.getBoundingClientRect();
+    coordinates.top = rect.top + element.scrollTop + coordinates.top;
+    coordinates.left = rect.left + element.scrollLeft + coordinates.left;
+
+    document.body.removeChild(div);
+
+    return coordinates;
+}

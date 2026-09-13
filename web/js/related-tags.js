@@ -6,6 +6,8 @@ import {
     getCurrentTagRange,
     getScrollbarWidth,
     getViewportMargin,
+    getCaretCoordinates,
+    calculateElementOffset,
     isLongText,
     isValidTag,
     normalizeTagToInsert,
@@ -694,9 +696,8 @@ class RelatedTagsUI {
 
     /**
      * Updates the position of the related tags panel.
-     * Position is calculated based on the input element, available space,
-     * and the setting `relatedTagsDisplayPosition`.
-     * @param {HTMLElement} inputElement The input element to position
+     * Vertical layout follows the caret (same as autocomplete);
+     * horizontal layout is placed beside the textarea.
      */
     #updatePosition() {
         // Measure the element size without causing reflow
@@ -777,8 +778,8 @@ class RelatedTagsUI {
         const viewportHeight = window.innerHeight;
         const margin = getViewportMargin();
         const targetRect = this.target.getBoundingClientRect();
+        const scale = window.app?.canvas?.ds?.scale ?? 1.0;
 
-        // Find optimal max width baesd on viewport and textarea element
         const maxWidth = Math.max(
             Math.min(targetRect.right, viewportWidth - margin.right) - targetRect.left,
             (viewportWidth - margin.left - margin.right) / 2
@@ -792,24 +793,30 @@ class RelatedTagsUI {
         };
 
         if (settingValues.relatedTagsDisplayPosition === 'vertical') {
-            // Vertical placement
-            const topSpace = targetRect.top - margin.top;
-            const bottomSpace = viewportHeight - targetRect.bottom - margin.bottom;
-            const placeBelow = elemHeight <= bottomSpace || bottomSpace >= topSpace;
+            const targetElmOffset = calculateElementOffset(this.target);
+            const { top: caretTop, left: caretLeft, lineHeight: caretLineHeight } = getCaretCoordinates(this.target);
+
+            let topPosition = targetElmOffset.top + ((caretTop - targetElmOffset.top) + caretLineHeight) * scale;
+            let leftPosition = targetElmOffset.left + (caretLeft - targetElmOffset.left) * scale;
+
+            const availableSpaceBelow = viewportHeight - topPosition - margin.bottom;
+            const availableSpaceAbove = caretTop - margin.top;
+            const placeBelow = elemHeight <= availableSpaceBelow || availableSpaceBelow >= availableSpaceAbove;
+
             if (placeBelow) {
-                area.height = Math.min(area.height, bottomSpace);
-                area.y = targetRect.bottom;
+                area.height = Math.min(area.height, Math.max(0, availableSpaceBelow));
+                area.y = topPosition;
             } else {
-                area.height = Math.min(area.height, topSpace);
-                area.y = Math.max(targetRect.y - area.height, margin.top);
+                area.height = Math.min(area.height, Math.max(0, availableSpaceAbove));
+                area.y = Math.max(caretTop - area.height, margin.top);
             }
 
-            // Calculate width considering scrollbar width if vertical scrolling is needed
             const scrollbarWidth = area.height < elemHeight ? getScrollbarWidth() : 0;
             area.width = Math.min(elemWidth + scrollbarWidth, maxWidth);
-
-            // Adjust x position to avoid overflow
-            area.x = Math.min(area.x, viewportWidth - area.width - margin.right);
+            area.x = Math.min(
+                Math.max(leftPosition, margin.left),
+                viewportWidth - area.width - margin.right
+            );
         } else {
             // Horizontal placement
             const leftSpace = targetRect.x - margin.left;

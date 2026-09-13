@@ -455,7 +455,7 @@ app.registerExtension({
         {
             id: id + ".RelatedTags.DisplayPosition",
             name: "Default Display Position",
-            tooltip: "Display position (relative to Textarea).",
+            tooltip: "Vertical: below the current line (like autocomplete). Horizontal: beside the textarea.",
             type: "combo",
             options: ["horizontal", "vertical"],
             defaultValue: "vertical",
