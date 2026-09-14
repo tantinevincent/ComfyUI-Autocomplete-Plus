@@ -10,7 +10,7 @@
 
 ## Features
 
-- **:zap:No setup required**: Automatically downloads CSV data optimized for Danbooru tags.
+- **:zap:No setup required**: Automatically downloads CSV data for Danbooru and e621 tags.
 - **:mag:Autocomplete**: Displays tag suggestions in real-time based on your input as you type.
 - **:file_cabinet:Related Tags Display**: Shows a list of tags highly related to the selected tag.
 - **:triangular_ruler:Auto Formatter**: Automatically formats prompt text when the textarea loses focus, cleaning up extra spaces and commas.
@@ -91,8 +91,9 @@ The dump is generated weekly from Danbooru. Artist, copyright, character, genera
 
 ### e621 CSV
 
-Currently, automatic download of CSV for e621 is not supported, so please manually place a CSV with the same structure as `danbooru_tags.csv` in the data folder with the name `e621_tags.csv`.
-Related tags always use Danbooru's API (e621 related tags are not supported).
+e621 tags are downloaded automatically from [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive) (`tag-lists/e621/`) on first launch and when a newer dump is published. The latest `e621_YYYY-MM-DD_ptN-ia-ed.csv` is written to `data/e621_tags.csv` (same 4-column layout as Danbooru). Current dumps typically use `pt20` (tags with fewer than 20 posts are omitted). The archive commits new files about once a quarter.
+
+You can still add extra e621 tags with `e621_tags*.csv` files in the data folder. Related tags always use Danbooru's API (e621 related tags are not supported).
 
 ### User CSV
 
@@ -202,7 +203,7 @@ You can skip the check process during ComfyUI startup by following these steps:
 **`csv_meta.json` after modification:**
 ```json
 {
-  "version": 2,
+  "version": 3,
   "check_updates_on_startup": false,
   ...
 }

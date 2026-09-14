@@ -27,7 +27,7 @@ export const TagCategory = {
     'e621': [
         'general',
         'artist',
-        'unused',
+        'contributor',
         'copyright',
         'character',
         'species',
@@ -87,7 +87,7 @@ export class TagData {
      */
     get hasWikiPage() {
         return Object.values(TagSource).includes(this.source)
-            && ['general', 'artist', 'copyright', 'character', 'species', 'lore'].includes(this.categoryText);
+            && ['general', 'artist', 'contributor', 'copyright', 'character', 'species', 'lore'].includes(this.categoryText);
     }
 }
 

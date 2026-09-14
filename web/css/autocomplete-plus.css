@@ -83,6 +83,10 @@ body.dark-theme,
   color: var(--autocomplete-plus-text-color-cat-orange);
 }
 
+#autocomplete-plus-root .e621[data-tag-category="contributor"] {
+  color: var(--autocomplete-plus-text-color-cat-orange);
+}
+
 #autocomplete-plus-root .e621[data-tag-category="copyright"] {
   color: var(--autocomplete-plus-text-color-cat-purple);
 }
@@ -237,6 +241,10 @@ body.dark-theme,
 }
 
 #related-tags-root .e621[data-tag-category="artist"] {
+  color: var(--autocomplete-plus-text-color-cat-orange);
+}
+
+#related-tags-root .e621[data-tag-category="contributor"] {
   color: var(--autocomplete-plus-text-color-cat-orange);
 }
 

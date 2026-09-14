@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import urllib.error
@@ -20,10 +21,18 @@ GITHUB_TAG_REPO = "tantinevincent/tagdb-updater"
 GITHUB_TAG_BRANCH = "main"
 GITHUB_DIST_BASE = f"https://raw.githubusercontent.com/{GITHUB_TAG_REPO}/{GITHUB_TAG_BRANCH}/dist"
 OUTPUT_CSV_NAME = "danbooru_tags.csv"
+
+E621_ARCHIVE_REPO = "tantinevincent/dbr-e621-lists-archive"
+E621_ARCHIVE_BRANCH = "main"
+E621_ARCHIVE_PATH = "tag-lists/e621"
+E621_OUTPUT_CSV_NAME = "e621_tags.csv"
+E621_PREFERRED_PT = 20
+E621_FILENAME_RE = re.compile(r"^e621_(\d{4}-\d{2}-\d{2})_pt(\d+)-ia-ed\.csv$")
+
 USER_AGENT = "Autocomplete-Plus/1.11"
 
 DEFAULT_CSV_METADATA = {
-    "version": 2,
+    "version": 3,
     "check_updates_on_startup": True,
     "github_tag_source": {
         "repo": GITHUB_TAG_REPO,
@@ -31,6 +40,16 @@ DEFAULT_CSV_METADATA = {
         "files": ["danbooru.csv", "danbooru-ja.csv"],
         "output": OUTPUT_CSV_NAME,
         "last_generated_at": None,
+        "last_download": None,
+        "last_remote_check_timestamp": None,
+    },
+    "e621_archive_source": {
+        "repo": E621_ARCHIVE_REPO,
+        "branch": E621_ARCHIVE_BRANCH,
+        "path": E621_ARCHIVE_PATH,
+        "output": E621_OUTPUT_CSV_NAME,
+        "last_filename": None,
+        "last_sha": None,
         "last_download": None,
         "last_remote_check_timestamp": None,
     },
@@ -167,8 +186,49 @@ def write_danbooru_tags_csv(path: str, rows: list) -> None:
         writer.writerows(rows)
 
 
+def parse_e621_archive_filename(name: str):
+    match = E621_FILENAME_RE.fullmatch(name or "")
+    if not match:
+        return None
+    return match.group(1), int(match.group(2))
+
+
+def pick_latest_e621_archive_file(entries: list) -> dict | None:
+    candidates = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        parsed = parse_e621_archive_filename(entry.get("name") or "")
+        if not parsed:
+            continue
+        date_str, pt = parsed
+        candidates.append((date_str, pt, entry))
+
+    if not candidates:
+        return None
+
+    latest_date = max(item[0] for item in candidates)
+    same_date = [item for item in candidates if item[0] == latest_date]
+    preferred = [item for item in same_date if item[1] == E621_PREFERRED_PT]
+    if preferred:
+        return preferred[0][2]
+
+    same_date.sort(key=lambda item: item[1])
+    return same_date[0][2]
+
+
+def rows_from_tag_csv(text: str) -> list:
+    parsed = parse_tag_rows(text, has_japanese_column=False)
+    rows = [
+        (row["tag"], row["category"], row["count"], merge_alias_lists(row["aliases"]))
+        for row in parsed.values()
+    ]
+    rows.sort(key=lambda item: (-item[2], item[0]))
+    return rows
+
+
 class Downloader:
-    """Download Danbooru tag CSVs from GitHub and merge them for autocomplete."""
+    """Download Danbooru and e621 tag CSVs from GitHub for autocomplete."""
 
     def __init__(self):
         self.csv_meta_file_exists_at_start = False
@@ -201,6 +261,8 @@ class Downloader:
             self.csv_meta_file_exists_at_start = True
             if "github_tag_source" not in metadata:
                 metadata["github_tag_source"] = default_metadata["github_tag_source"]
+            if "e621_archive_source" not in metadata:
+                metadata["e621_archive_source"] = default_metadata["e621_archive_source"]
             return metadata
 
         except (OSError, json.JSONDecodeError) as e:
@@ -219,6 +281,12 @@ class Downloader:
         source = self.metadata.setdefault("github_tag_source", self.get_default_csv_metadata()["github_tag_source"])
         return source
 
+    def _e621_source(self) -> dict:
+        return self.metadata.setdefault(
+            "e621_archive_source",
+            self.get_default_csv_metadata()["e621_archive_source"],
+        )
+
     def _dist_url(self, filename: str) -> str:
         return f"{GITHUB_DIST_BASE}/{filename}"
 
@@ -229,22 +297,9 @@ class Downloader:
         )
         return urllib.request.urlopen(req, timeout=timeout)
 
-    def _fetch_remote_generated_at(self) -> str | None:
-        url = self._dist_url("meta.json")
-        try:
-            with self._http_get(url, timeout=15) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            generated_at = payload.get("generated_at")
-            if isinstance(generated_at, str) and generated_at.strip():
-                return generated_at.strip()
-            print(f"[Autocomplete-Plus] 'generated_at' missing in {url}")
-            return None
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-            print(f"[Autocomplete-Plus] Failed to read GitHub tag meta.json: {e}")
-            return None
-
-    def _download_text_with_progress(self, filename: str) -> str | None:
-        url = self._dist_url(filename)
+    def _download_text_with_progress(self, filename: str, url: str | None = None) -> str | None:
+        if url is None:
+            url = self._dist_url(filename)
         temp_path = get_temp_download_path(filename)
         print(f"[Autocomplete-Plus] Attempting to download {filename} from {url}")
 
@@ -290,6 +345,20 @@ class Downloader:
                     os.remove(temp_path)
                 except OSError:
                     pass
+
+    def _fetch_remote_generated_at(self) -> str | None:
+        url = self._dist_url("meta.json")
+        try:
+            with self._http_get(url, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            generated_at = payload.get("generated_at")
+            if isinstance(generated_at, str) and generated_at.strip():
+                return generated_at.strip()
+            print(f"[Autocomplete-Plus] 'generated_at' missing in {url}")
+            return None
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            print(f"[Autocomplete-Plus] Failed to read GitHub tag meta.json: {e}")
+            return None
 
     def _should_refresh(self, remote_generated_at: str | None, force_check: bool) -> str | None:
         output_path = get_file_path(OUTPUT_CSV_NAME)
@@ -345,15 +414,97 @@ class Downloader:
         print(f"[Autocomplete-Plus] Wrote {len(rows)} tags to {output_path}.")
         return True
 
-    def _ensure_directories_exist(self):
-        os.makedirs(DATA_DIR, exist_ok=True)
-        os.makedirs(TEMP_DOWNLOAD_DIR, exist_ok=True)
+    def _e621_list_url(self) -> str:
+        source = self._e621_source()
+        repo = source.get("repo") or E621_ARCHIVE_REPO
+        path = source.get("path") or E621_ARCHIVE_PATH
+        return f"https://api.github.com/repos/{repo}/contents/{path}"
 
-    def run_check_and_download(self, force_check: bool = False):
-        if not (self.metadata.get("check_updates_on_startup", True) or force_check):
-            print('[Autocomplete-Plus] "check_updates_on_startup" is disabled. Skipping CSV update check and download.')
-            return
+    def _e621_raw_url(self, filename: str) -> str:
+        source = self._e621_source()
+        repo = source.get("repo") or E621_ARCHIVE_REPO
+        branch = source.get("branch") or E621_ARCHIVE_BRANCH
+        path = source.get("path") or E621_ARCHIVE_PATH
+        return f"https://raw.githubusercontent.com/{repo}/{branch}/{path}/{filename}"
 
+    def _list_e621_archive_files(self) -> list | None:
+        url = self._e621_list_url()
+        print(f"[Autocomplete-Plus] Checking GitHub {E621_ARCHIVE_REPO} for e621 tag CSV updates...")
+        try:
+            with self._http_get(url, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if isinstance(payload, list):
+                return payload
+            print(f"[Autocomplete-Plus] Unexpected GitHub contents response from {url}")
+            return None
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            print(f"[Autocomplete-Plus] Failed to list e621 archive files: {e}")
+            return None
+
+    def _should_refresh_e621(self, remote_file: dict | None, force_check: bool) -> str | None:
+        output_path = get_file_path(E621_OUTPUT_CSV_NAME)
+        source = self._e621_source()
+
+        if not check_file_valid(output_path):
+            return f"{E621_OUTPUT_CSV_NAME} is missing or empty locally."
+
+        if not self.csv_meta_file_exists_at_start:
+            return f"{CSV_META_FILE_NAME} was not found or schema changed. Forcing download."
+
+        if force_check:
+            return "Manual CSV update check requested."
+
+        if not remote_file:
+            return None
+
+        remote_name = remote_file.get("name")
+        remote_sha = remote_file.get("sha")
+        if remote_sha and source.get("last_sha") != remote_sha:
+            return f"Remote e621 dump changed ({remote_name})."
+        if remote_name and source.get("last_filename") != remote_name:
+            return f"Remote e621 dump is newer ({remote_name})."
+
+        return None
+
+    def _download_e621_csv(self, remote_file: dict) -> bool:
+        filename = remote_file.get("name")
+        if not filename:
+            print("[Autocomplete-Plus] e621 archive file is missing a name.")
+            return False
+
+        url = remote_file.get("download_url") or self._e621_raw_url(filename)
+        csv_text = self._download_text_with_progress(filename, url)
+        if not csv_text:
+            print("[Autocomplete-Plus] Skipping e621 write because the archive download failed.")
+            return False
+
+        rows = rows_from_tag_csv(csv_text)
+        if not rows:
+            print("[Autocomplete-Plus] e621 archive produced no tag rows.")
+            return False
+
+        output_path = get_file_path(E621_OUTPUT_CSV_NAME)
+        temp_output = get_temp_download_path(E621_OUTPUT_CSV_NAME)
+        try:
+            write_danbooru_tags_csv(temp_output, rows)
+            shutil.move(temp_output, output_path)
+        except OSError as e:
+            print(f"[Autocomplete-Plus] Failed to write {E621_OUTPUT_CSV_NAME}: {e}")
+            if os.path.exists(temp_output):
+                try:
+                    os.remove(temp_output)
+                except OSError:
+                    pass
+            return False
+
+        source = self._e621_source()
+        source["last_download"] = datetime.now(timezone.utc).isoformat()
+        source["last_filename"] = filename
+        source["last_sha"] = remote_file.get("sha")
+        print(f"[Autocomplete-Plus] Wrote {len(rows)} tags to {output_path} from {filename}.")
+        return True
+
+    def _run_danbooru_check_and_download(self, force_check: bool):
         now_utc = datetime.now(timezone.utc)
         source = self._github_source()
         print(f"[Autocomplete-Plus] Checking GitHub {GITHUB_TAG_REPO} for tag CSV updates...")
@@ -367,5 +518,44 @@ class Downloader:
             self._download_and_merge(remote_generated_at)
         else:
             print("[Autocomplete-Plus] Local danbooru_tags.csv is up to date.")
+
+    def _run_e621_check_and_download(self, force_check: bool):
+        source = self._e621_source()
+        source["last_remote_check_timestamp"] = datetime.now(timezone.utc).isoformat()
+
+        entries = self._list_e621_archive_files()
+        remote_file = pick_latest_e621_archive_file(entries or [])
+        if not remote_file:
+            if entries is None:
+                print("[Autocomplete-Plus] Skipping e621 refresh because the archive listing failed.")
+            else:
+                print("[Autocomplete-Plus] No matching e621 archive CSV found.")
+            return
+
+        reason = self._should_refresh_e621(remote_file, force_check)
+        if reason:
+            print(f"[Autocomplete-Plus] Queuing e621 CSV refresh: {reason}")
+            self._download_e621_csv(remote_file)
+        else:
+            print("[Autocomplete-Plus] Local e621_tags.csv is up to date.")
+
+    def _ensure_directories_exist(self):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(TEMP_DOWNLOAD_DIR, exist_ok=True)
+
+    def run_check_and_download(self, force_check: bool = False):
+        if not (self.metadata.get("check_updates_on_startup", True) or force_check):
+            print('[Autocomplete-Plus] "check_updates_on_startup" is disabled. Skipping CSV update check and download.')
+            return
+
+        try:
+            self._run_danbooru_check_and_download(force_check)
+        except Exception as e:
+            print(f"[Autocomplete-Plus] Danbooru CSV update failed: {e}")
+
+        try:
+            self._run_e621_check_and_download(force_check)
+        except Exception as e:
+            print(f"[Autocomplete-Plus] e621 CSV update failed: {e}")
 
         self._save_metadata()

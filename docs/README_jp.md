@@ -8,7 +8,7 @@
 
 ## 特徴
 
-- **:zap:セットアップ不要**: Danbooruタグに最適化された CSV データを自動でダウンロード
+- **:zap:セットアップ不要**: Danbooru / e621 の CSV データを自動でダウンロード
 - **:mag:オートコンプリート**: テキスト入力中に、入力内容に基づいてタグ候補をリアルタイムで表示
 - **:file_cabinet:関連タグ表示機能**: 選択したタグと関連性の高いタグを一覧表示
 - **:triangular_ruler:自動フォーマット**: テキストエリアがフォーカスを失った際に、プロンプトテキストを自動的にフォーマットし、余分なスペースやカンマを整理
@@ -89,8 +89,9 @@
 
 ### e621 CSV
 
-現在、e621用 CSV の自動ダウンロードは未対応なため `danbooru_tags.csv` と同じ構造の CSV を `e621_tags.csv` という名前でデータフォルダーに手動配置してください。
-関連タグは常に Danbooru の API を使用します（e621 の関連タグは未対応です）。
+e621 タグは初回起動時および新しい dump があるときに [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive)（`tag-lists/e621/`）から自動ダウンロードされます。最新の `e621_YYYY-MM-DD_ptN-ia-ed.csv` を `data/e621_tags.csv` に書き出します（Danbooru と同じ 4 列）。現行 dump は通常 `pt20`（投稿数が 20 未満のタグは含まれません）。アーカイブへの commit はおおよそ四半期ごとです。
+
+追加タグはこれまでどおり `e621_tags*.csv` を data フォルダーに置けます。関連タグは常に Danbooru の API を使用します（e621 の関連タグは未対応です）。
 
 ### ユーザーCSV
 
@@ -200,7 +201,7 @@ worst_quality,5,9999999,
 **変更後の `csv_meta.json`：**
 ```json
 {
-  "version": 2,
+  "version": 3,
   "check_updates_on_startup": false,
   ...
 }
