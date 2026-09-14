@@ -16,6 +16,8 @@ DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"
 
 DANBOORU_PREFIX = "danbooru"
 E621_PREFIX = "e621"
+GELBOORU_PREFIX = "gelbooru"
+TAG_SOURCE_PREFIXES = [DANBOORU_PREFIX, E621_PREFIX, GELBOORU_PREFIX]
 
 TAGS_SUFFIX = "tags"
 COOCCURRENCE_SUFFIX = "tags_cooccurrence"
@@ -27,20 +29,17 @@ def get_csv_file_status():
     """
 
     data = {
-        DANBOORU_PREFIX: {
+        prefix: {
             "base_tags": False,
             "extra_tags": [],
-        },
-        E621_PREFIX: {
-            "base_tags": False,
-            "extra_tags": [],
-        },
+        }
+        for prefix in TAG_SOURCE_PREFIXES
     }
 
     if not os.path.isdir(DATA_DIR):
         return data
 
-    for prefix in [DANBOORU_PREFIX, E621_PREFIX]:
+    for prefix in TAG_SOURCE_PREFIXES:
         base_tags_file = f"{prefix}_{TAGS_SUFFIX}.csv"
         tags_base_exists = os.path.exists(os.path.join(DATA_DIR, base_tags_file))
         tags_extra_files = []
@@ -96,20 +95,18 @@ async def get_csv_list(_request):
     csv_file_status = get_csv_file_status()
 
     response = {
-        DANBOORU_PREFIX: {
-            "base_tags": csv_file_status[DANBOORU_PREFIX]["base_tags"],
-            "extra_tags": csv_file_status[DANBOORU_PREFIX]["extra_tags"],
-        },
-        E621_PREFIX: {
-            "base_tags": csv_file_status[E621_PREFIX]["base_tags"],
-            "extra_tags": csv_file_status[E621_PREFIX]["extra_tags"],
-        },
+        prefix: {
+            "base_tags": csv_file_status[prefix]["base_tags"],
+            "extra_tags": csv_file_status[prefix]["extra_tags"],
+        }
+        for prefix in TAG_SOURCE_PREFIXES
     }
 
     # Print csv file status to the console for debugging
     print(f"""[Autocomplete-Plus] CSV file status:
   * Danbooru -> base: {response[DANBOORU_PREFIX]["base_tags"]}, extra: [{", ".join(response[DANBOORU_PREFIX]["extra_tags"])}]
-  * E621     -> base: {response[E621_PREFIX]["base_tags"]}, extra: [{", ".join(response[E621_PREFIX]["extra_tags"])}]""")
+  * E621     -> base: {response[E621_PREFIX]["base_tags"]}, extra: [{", ".join(response[E621_PREFIX]["extra_tags"])}]
+  * Gelbooru -> base: {response[GELBOORU_PREFIX]["base_tags"]}, extra: [{", ".join(response[GELBOORU_PREFIX]["extra_tags"])}]""")
 
     return web.json_response(response)
 
@@ -121,7 +118,7 @@ async def get_base_tags_file(request):
     """
     source = str(request.match_info["source"])
     suffix = str(request.match_info["suffix"])
-    if source not in [DANBOORU_PREFIX, E621_PREFIX] or suffix != TAGS_SUFFIX:
+    if source not in TAG_SOURCE_PREFIXES or suffix != TAGS_SUFFIX:
         return web.json_response({"error": "Invalid tag source or suffix"}, status=400)
 
     file_path = os.path.join(DATA_DIR, f"{source}_{suffix}.csv")
@@ -141,7 +138,7 @@ async def get_extra_tags_file(request):
 
         source = str(request.match_info["source"])
         suffix = str(request.match_info["suffix"])
-        if source not in [DANBOORU_PREFIX, E621_PREFIX] or suffix != TAGS_SUFFIX:
+        if source not in TAG_SOURCE_PREFIXES or suffix != TAGS_SUFFIX:
             return web.json_response({"error": "Invalid tag source or suffix"}, status=400)
 
         index = int(request.match_info["index"])

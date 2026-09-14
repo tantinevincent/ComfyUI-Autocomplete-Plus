@@ -23,6 +23,16 @@ export const IconSvgHtmlString = `
                 <text x="0" y="0" class="e621-white" font-family="Arial Black, Gadget, sans-serif" font-size="56" text-anchor="middle" dominant-baseline="middle">e</text>
                 </g>
             </symbol>
+            <symbol id="autocomplete-plus-icon-gelbooru" viewBox="-33 -38 66 76">
+                <style>
+                .gelbooru-teal { fill: #1a9b8a; }
+                .gelbooru-white { fill: rgb(230, 230, 230); }
+                </style>
+                <g>
+                <path class="gelbooru-teal" d="M0 -38 L32.909 -19 L32.909 19 L0 38 L-32.909 19 L-32.909 -19 Z"/>
+                <text x="0" y="0" class="gelbooru-white" font-family="Arial Black, Gadget, sans-serif" font-size="56" text-anchor="middle" dominant-baseline="middle">g</text>
+                </g>
+            </symbol>
         </defs>
     </svg>`;
 
@@ -657,7 +667,7 @@ export function getScrollbarWidth() {
 
 /**
  * Opens a wiki URL in a new browser tab for the given tag.
- * @param {string} tagSource - The source of the tag ('danbooru', 'e621', 'embeddings', 'lora')
+ * @param {string} tagSource - The source of the tag ('danbooru', 'e621', 'gelbooru', 'embeddings', 'lora')
  * @param {string} tagName - The name of the tag
  * @returns {boolean} - True if URL was opened, false if not applicable
  */
@@ -678,6 +688,11 @@ export function openTagWikiUrl(tagSource, tagName) {
         case 'e621':
             const e621Tag = encodeURIComponent(tagName.replace(/ /g, '_'));
             wikiUrl = `https://e621.net/wiki_pages/${e621Tag}`;
+            break;
+
+        case 'gelbooru':
+            const gelbooruTag = encodeURIComponent(tagName.replace(/ /g, '_'));
+            wikiUrl = `https://gelbooru.com/index.php?page=wiki&s=view&search=${gelbooruTag}`;
             break;
 
         case 'embeddings':

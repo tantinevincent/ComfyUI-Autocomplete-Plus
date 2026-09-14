@@ -6,11 +6,11 @@
 
 ## Overview
 
-**ComfyUI-Autocomplete-Plus** is a custom node that provides multiple input assistance features for any text area in [ComfyUI](https://github.com/comfyanonymous/ComfyUI). Currently, it supports Danbooru and e621 tags (e621 does not support some functions).
+**ComfyUI-Autocomplete-Plus** is a custom node that provides multiple input assistance features for any text area in [ComfyUI](https://github.com/comfyanonymous/ComfyUI). Currently, it supports Danbooru, e621, and Gelbooru tags (related tags always use Danbooru).
 
 ## Features
 
-- **:zap:No setup required**: Automatically downloads CSV data for Danbooru and e621 tags.
+- **:zap:No setup required**: Automatically downloads CSV data for Danbooru, e621, and Gelbooru tags.
 - **:mag:Autocomplete**: Displays tag suggestions in real-time based on your input as you type.
 - **:file_cabinet:Related Tags Display**: Shows a list of tags highly related to the selected tag.
 - **:triangular_ruler:Auto Formatter**: Automatically formats prompt text when the textarea loses focus, cleaning up extra spaces and commas.
@@ -41,7 +41,7 @@ When you type in a text input area, tags that partially match the text are displ
 - Tag aliases are also included in the search. Japanese hiragana and katakana are searched without distinction.
 - Tags are color-coded by category. The color-coding rules are the same as Danbooru.
 - Tags that have already been entered are displayed grayed out.
-- You can display Danbooru and e621 tags at the same time. You can also change the priority from the settings.
+- You can display Danbooru, e621, and Gelbooru tags at the same time. You can also change the priority from the settings.
 - Supports autocomplete for Lora and Embedding inputs. You can enable/disable this feature in the settings.
 - Clicking the 📖 icon opens the tag's Wiki page. If a tag is selected via keyboard, you can open it with the `F1` key.
 
@@ -95,11 +95,17 @@ e621 tags are downloaded automatically from [tantinevincent/dbr-e621-lists-archi
 
 You can still add extra e621 tags with `e621_tags*.csv` files in the data folder. Related tags always use Danbooru's API (e621 related tags are not supported).
 
+### Gelbooru CSV
+
+Gelbooru tags are downloaded automatically from the same [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive) repo (`tag-lists/gelbooru/`). The latest `gelbooru_YYYY-MM-DD_ptN.csv` is written to `data/gelbooru_tags.csv`. Current dumps typically use `pt20`. Ambiguous-tag dumps (`gelbooru_tags_*_incl_ambiguous.csv`) are ignored.
+
+You can still add extra Gelbooru tags with `gelbooru_tags*.csv` files in the data folder. Related tags always use Danbooru's API.
+
 ### User CSV
 
 Users can also use their own CSV files. CSV files should be placed in the `data` folder according to the following naming convention:
 
-- **CSV for Autocomplete**: `<danbooru | e621>_tags*.csv`
+- **CSV for Autocomplete**: `<danbooru | e621 | gelbooru>_tags*.csv`
 
 For example, you can add frequently used meta tags to the autocomplete suggestions by placing a file named `danbooru_tags_meta.csv` in the `data` folder.
 A header row is not required. A browser reload is necessary to apply the changes.
@@ -122,6 +128,7 @@ When the browser is reloaded, you can check the list of loaded CSV files in the 
 [Autocomplete-Plus] CSV file status:
   * Danbooru -> base: True, extra: danbooru_tags_meta.csv // If displayed here, meta tags can be autocompleted
   * E621 -> base: False, extra:
+  * Gelbooru -> base: False, extra:
 ```
 
 >[!NOTE]
@@ -149,7 +156,7 @@ For example, by preparing the following CSV, you can quickly insert correspondin
 ### Tag Source
 
 > [!NOTE]
-> The source of tag data such as Danbooru or e621 is called the "tag source".
+> The source of tag data such as Danbooru, e621, or Gelbooru is called the "tag source".
 
 - **Autocomplete Tag Source**: The tag source to display in the autocomplete suggestions. Select "all" to display all loaded tag sources.
 - **Primary source for 'all' Source**: When `Autocomplete Tag Source` is set to "all", the tag source specified here will be displayed with priority.
@@ -203,7 +210,7 @@ You can skip the check process during ComfyUI startup by following these steps:
 **`csv_meta.json` after modification:**
 ```json
 {
-  "version": 3,
+  "version": 4,
   "check_updates_on_startup": false,
   ...
 }

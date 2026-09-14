@@ -4,11 +4,11 @@
 
 ## 概要
 
-**ComfyUI-Autocomplete-Plus** は、[ComfyUI](https://github.com/comfyanonymous/ComfyUI) の任意のテキストエリアに複数の入力支援機能を提供するカスタムノードです。現在はDanbooruとe621のタグに対応しています（e621は一部の機能が未対応です）。
+**ComfyUI-Autocomplete-Plus** は、[ComfyUI](https://github.com/comfyanonymous/ComfyUI) の任意のテキストエリアに複数の入力支援機能を提供するカスタムノードです。現在はDanbooru、e621、Gelbooruのタグに対応しています（関連タグは常にDanbooruを使用します）。
 
 ## 特徴
 
-- **:zap:セットアップ不要**: Danbooru / e621 の CSV データを自動でダウンロード
+- **:zap:セットアップ不要**: Danbooru / e621 / Gelbooru の CSV データを自動でダウンロード
 - **:mag:オートコンプリート**: テキスト入力中に、入力内容に基づいてタグ候補をリアルタイムで表示
 - **:file_cabinet:関連タグ表示機能**: 選択したタグと関連性の高いタグを一覧表示
 - **:triangular_ruler:自動フォーマット**: テキストエリアがフォーカスを失った際に、プロンプトテキストを自動的にフォーマットし、余分なスペースやカンマを整理
@@ -39,7 +39,7 @@
 - タグのエイリアスも検索対象に含まれます。日本語のひらがな、カタカナは区別せず検索されます
 - タグのカテゴリ毎に色分けされます。色分けのルールは Danbooru と同じです
 - 入力済みのタグはグレーアウトで表示されます
-- Danbooruとe621のタグを同時に表示出来ます。設定から優先順位を変更できます
+- Danbooru、e621、Gelbooruのタグを同時に表示出来ます。設定から優先順位を変更できます
 - LoraとEmbeddingの入力補完に対応しています。設定から有効・無効を切り替えられます
 - 「📖」アイコンをクリックするとタグのWikiページを開きます。キーボードで選択中の場合は `F1` キーで開くことが出来ます
 
@@ -93,11 +93,17 @@ e621 タグは初回起動時および新しい dump があるときに [tantine
 
 追加タグはこれまでどおり `e621_tags*.csv` を data フォルダーに置けます。関連タグは常に Danbooru の API を使用します（e621 の関連タグは未対応です）。
 
+### Gelbooru CSV
+
+Gelbooru タグも同じ [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive)（`tag-lists/gelbooru/`）から自動ダウンロードされます。最新の `gelbooru_YYYY-MM-DD_ptN.csv` を `data/gelbooru_tags.csv` に書き出します。現行 dump は通常 `pt20` です。ambiguous 付きの `gelbooru_tags_*_incl_ambiguous.csv` は使いません。
+
+追加タグは `gelbooru_tags*.csv` を data フォルダーに置けます。関連タグは常に Danbooru の API を使用します。
+
 ### ユーザーCSV
 
 ユーザーが自身で用意した CSV を使用することも可能です。 CSV ファイルは以下の命名規則に従って `data` フォルダーに配置してください。
 
-- **オートコンプリート用 CSV**: <danbooru | e621>_tags*.csv
+- **オートコンプリート用 CSV**: <danbooru | e621 | gelbooru>_tags*.csv
 
 例として、よく使うメタタグを `danbooru_tags_meta.csv` の名前で `data` フォルダーに配置することでオートコンプリート候補に追加できます。
 ヘッダー行はなくても構いません。反映にはブラウザのリロードが必要です。
@@ -120,6 +126,7 @@ worst_quality,5,9999999,
 [Autocomplete-Plus] CSV file status:
   * Danbooru -> base: True, extra: danbooru_tags_meta.csv // ここに表示されていればメタタグを入力補完できます
   * E621     -> base: False, extra: 
+  * Gelbooru -> base: False, extra: 
 ```
 
 >[!NOTE]
@@ -147,7 +154,7 @@ worst_quality,5,9999999,
 ### タグソース
 
 > [!NOTE]
-> Danbooruやe621等のタグデータの提供元を「タグソース」と呼びます
+> Danbooru、e621、Gelbooru等のタグデータの提供元を「タグソース」と呼びます
 
 - **Autocomplete Tag Source**: オートコンプリート候補に表示するタグソース。「all」を選択するとロード済みの全てのタグソースを表示します
 - **Primary source for 'all' Source**: `Autocomplete Tag Source` が「all」のとき、ここで指定したタグソースが優先して表示されます
@@ -201,7 +208,7 @@ worst_quality,5,9999999,
 **変更後の `csv_meta.json`：**
 ```json
 {
-  "version": 3,
+  "version": 4,
   "check_updates_on_startup": false,
   ...
 }

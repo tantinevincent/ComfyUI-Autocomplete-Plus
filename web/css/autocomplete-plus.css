@@ -75,6 +75,30 @@ body.dark-theme,
   color: var(--autocomplete-plus-text-color-cat-gray);
 }
 
+#autocomplete-plus-root .gelbooru[data-tag-category="general"] {
+  color: var(--autocomplete-plus-text-color-cat-blue);
+}
+
+#autocomplete-plus-root .gelbooru[data-tag-category="artist"] {
+  color: var(--autocomplete-plus-text-color-cat-red);
+}
+
+#autocomplete-plus-root .gelbooru[data-tag-category="copyright"] {
+  color: var(--autocomplete-plus-text-color-cat-purple);
+}
+
+#autocomplete-plus-root .gelbooru[data-tag-category="character"] {
+  color: var(--autocomplete-plus-text-color-cat-green);
+}
+
+#autocomplete-plus-root .gelbooru[data-tag-category="meta"] {
+  color: var(--autocomplete-plus-text-color-cat-yellow);
+}
+
+#autocomplete-plus-root .gelbooru[data-tag-category="unknown"] {
+  color: var(--autocomplete-plus-text-color-cat-gray);
+}
+
 #autocomplete-plus-root .e621[data-tag-category="general"] {
   color: var(--autocomplete-plus-text-color-cat-sky);
 }
@@ -233,6 +257,30 @@ body.dark-theme,
 }
 
 #related-tags-root .danbooru[data-tag-category="unknown"] {
+  color: var(--autocomplete-plus-text-color-cat-gray);
+}
+
+#related-tags-root .gelbooru[data-tag-category="general"] {
+  color: var(--autocomplete-plus-text-color-cat-blue);
+}
+
+#related-tags-root .gelbooru[data-tag-category="artist"] {
+  color: var(--autocomplete-plus-text-color-cat-red);
+}
+
+#related-tags-root .gelbooru[data-tag-category="copyright"] {
+  color: var(--autocomplete-plus-text-color-cat-purple);
+}
+
+#related-tags-root .gelbooru[data-tag-category="character"] {
+  color: var(--autocomplete-plus-text-color-cat-green);
+}
+
+#related-tags-root .gelbooru[data-tag-category="meta"] {
+  color: var(--autocomplete-plus-text-color-cat-yellow);
+}
+
+#related-tags-root .gelbooru[data-tag-category="unknown"] {
   color: var(--autocomplete-plus-text-color-cat-gray);
 }
 

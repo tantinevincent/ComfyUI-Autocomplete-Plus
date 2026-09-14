@@ -7,6 +7,7 @@ import { createFlexSearchDocument, createFlexSearchDocumentForModel } from "./se
 export const TagSource = {
     Danbooru: 'danbooru',
     E621: 'e621',
+    Gelbooru: 'gelbooru',
 }
 
 // Tag sources for model based tag data.
@@ -34,6 +35,15 @@ export const TagCategory = {
         'invalid',
         'meta',
         'lore',
+    ],
+    'gelbooru': [
+        'general',
+        'artist',
+        'unused',
+        'copyright',
+        'character',
+        'meta',
+        'deprecated',
     ],
     'embeddings': [
         'embeddings'
@@ -87,7 +97,7 @@ export class TagData {
      */
     get hasWikiPage() {
         return Object.values(TagSource).includes(this.source)
-            && ['general', 'artist', 'contributor', 'copyright', 'character', 'species', 'lore'].includes(this.categoryText);
+            && ['general', 'artist', 'contributor', 'copyright', 'character', 'species', 'lore', 'meta'].includes(this.categoryText);
     }
 }
 
@@ -152,7 +162,7 @@ export function getEnabledTagSourceInPriorityOrder() {
 /**
  * Loads tag data from a single CSV file.
  * @param {string} csvUrl - The URL of the CSV file to load.
- * @param {string} siteName - The site name (e.g., 'danbooru', 'e621').
+ * @param {string} siteName - The site name (e.g., 'danbooru', 'e621', 'gelbooru').
  * @returns {Promise<void>}
  */
 async function loadTags(csvUrl, siteName) {

@@ -1,7 +1,7 @@
 export const settingValues = {
     // Tag source settings
-    tagSource: 'all', // 'danbooru', 'e621', 'all'
-    primaryTagSource: 'danbooru', // 'danbooru', 'e621'
+    tagSource: 'all', // 'danbooru', 'e621', 'gelbooru', 'all'
+    primaryTagSource: 'danbooru', // 'danbooru', 'e621', 'gelbooru'
     tagSourceIconPosition: 'left', // 'left', 'right', 'hidden'
 
     // Autocomplete feature settings
