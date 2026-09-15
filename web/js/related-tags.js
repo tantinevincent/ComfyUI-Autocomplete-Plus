@@ -285,8 +285,7 @@ class RelatedTagsUI {
             settingValues.relatedTagsSortOrder = current === 'frequency' ? 'jaccard' : 'frequency';
             this.#updateHeader();
             if (this.target) {
-                this.#restoreTextareaCaret();
-                this.show(this.target, { reuseCurrentTag: true });
+                this.show(this.target);
             }
             e.preventDefault();
             e.stopPropagation();
@@ -309,14 +308,6 @@ class RelatedTagsUI {
         });
         this.headerControls.appendChild(this.pinBtn);
 
-        this.headerControls.addEventListener('mousedown', (e) => {
-            if (e.target.closest('button')) {
-                this.#saveTextareaCaret();
-                e.preventDefault();
-                this.#restoreTextareaCaret();
-            }
-        });
-
         this.header.appendChild(this.headerControls);
 
         this.root.appendChild(this.header);
@@ -333,8 +324,6 @@ class RelatedTagsUI {
         this.selectedIndex = -1;
         this.relatedTags = [];
         this.currentTag = null;
-        this.savedSelectionStart = null;
-        this.savedSelectionEnd = null;
         this.isLoading = false;
         this.loadError = null;
         this.fetchGeneration = 0;
@@ -382,28 +371,22 @@ class RelatedTagsUI {
     /**
      * Display
      * @param {HTMLTextAreaElement} textareaElement The textarea being used
-     * @param {{ reuseCurrentTag?: boolean }} [options]
      */
-    async show(textareaElement, options = {}) {
+    async show(textareaElement) {
         if (!settingValues.enableRelatedTags) {
             this.hide();
             return;
         }
 
-        if (!options.reuseCurrentTag) {
-            const currentTag = getTagFromCursorPosition(textareaElement);
+        const currentTag = getTagFromCursorPosition(textareaElement);
 
-            if (!this.isPinned) {
-                if (!isLongText(currentTag) && isValidTag(currentTag)) {
-                    this.currentTag = currentTag
-                } else {
-                    this.hide();
-                    return;
-                }
+        if (!this.isPinned) {
+            if (!isLongText(currentTag) && isValidTag(currentTag)) {
+                this.currentTag = currentTag
+            } else {
+                this.hide();
+                return;
             }
-        } else if (!this.currentTag) {
-            this.hide();
-            return;
         }
 
         this.target = textareaElement;
@@ -527,25 +510,6 @@ class RelatedTagsUI {
     #refresh() {
         if (this.target) {
             this.show(this.target);
-        }
-    }
-
-    #saveTextareaCaret() {
-        if (!this.target) {
-            return;
-        }
-        this.savedSelectionStart = this.target.selectionStart;
-        this.savedSelectionEnd = this.target.selectionEnd;
-    }
-
-    #restoreTextareaCaret() {
-        if (!this.target) {
-            return;
-        }
-        this.target.focus({ preventScroll: true });
-        if (typeof this.savedSelectionStart === 'number') {
-            this.target.selectionStart = this.savedSelectionStart;
-            this.target.selectionEnd = this.savedSelectionEnd ?? this.savedSelectionStart;
         }
     }
 
@@ -916,16 +880,9 @@ export class RelatedTagsEventHandler {
 
         // Need a slight delay because clicking the related tags list causes blur
         setTimeout(() => {
-            if (this.relatedTagsUI.isPinned) {
-                return;
+            if (!this.relatedTagsUI.root.contains(document.activeElement) && !this.relatedTagsUI.isPinned) {
+                this.relatedTagsUI.hide();
             }
-
-            const active = document.activeElement;
-            if (this.relatedTagsUI.root.contains(active) || active === this.relatedTagsUI.target) {
-                return;
-            }
-
-            this.relatedTagsUI.hide();
         }, 150);
     }
 
