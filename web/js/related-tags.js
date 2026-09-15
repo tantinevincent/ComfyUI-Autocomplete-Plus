@@ -285,7 +285,7 @@ class RelatedTagsUI {
             settingValues.relatedTagsSortOrder = current === 'frequency' ? 'jaccard' : 'frequency';
             this.#updateHeader();
             if (this.target) {
-                this.show(this.target);
+                this.show(this.target, { reuseCurrentTag: true });
             }
             e.preventDefault();
             e.stopPropagation();
@@ -307,6 +307,12 @@ class RelatedTagsUI {
             e.stopPropagation();
         });
         this.headerControls.appendChild(this.pinBtn);
+
+        this.headerControls.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button')) {
+                e.preventDefault();
+            }
+        });
 
         this.header.appendChild(this.headerControls);
 
@@ -371,23 +377,28 @@ class RelatedTagsUI {
     /**
      * Display
      * @param {HTMLTextAreaElement} textareaElement The textarea being used
+     * @param {{ reuseCurrentTag?: boolean }} [options]
      */
-    async show(textareaElement) {
+    async show(textareaElement, options = {}) {
         if (!settingValues.enableRelatedTags) {
             this.hide();
             return;
         }
 
-        // Get the tag at current cursor position
-        const currentTag = getTagFromCursorPosition(textareaElement);
+        if (!options.reuseCurrentTag) {
+            const currentTag = getTagFromCursorPosition(textareaElement);
 
-        if (!this.isPinned) {
-            if (!isLongText(currentTag) && isValidTag(currentTag)) {
-                this.currentTag = currentTag
-            } else {
-                this.hide();
-                return;
+            if (!this.isPinned) {
+                if (!isLongText(currentTag) && isValidTag(currentTag)) {
+                    this.currentTag = currentTag
+                } else {
+                    this.hide();
+                    return;
+                }
             }
+        } else if (!this.currentTag) {
+            this.hide();
+            return;
         }
 
         this.target = textareaElement;
