@@ -285,6 +285,7 @@ class RelatedTagsUI {
             settingValues.relatedTagsSortOrder = current === 'frequency' ? 'jaccard' : 'frequency';
             this.#updateHeader();
             if (this.target) {
+                this.#restoreTextareaCaret();
                 this.show(this.target, { reuseCurrentTag: true });
             }
             e.preventDefault();
@@ -310,7 +311,9 @@ class RelatedTagsUI {
 
         this.headerControls.addEventListener('mousedown', (e) => {
             if (e.target.closest('button')) {
+                this.#saveTextareaCaret();
                 e.preventDefault();
+                this.#restoreTextareaCaret();
             }
         });
 
@@ -330,6 +333,8 @@ class RelatedTagsUI {
         this.selectedIndex = -1;
         this.relatedTags = [];
         this.currentTag = null;
+        this.savedSelectionStart = null;
+        this.savedSelectionEnd = null;
         this.isLoading = false;
         this.loadError = null;
         this.fetchGeneration = 0;
@@ -522,6 +527,25 @@ class RelatedTagsUI {
     #refresh() {
         if (this.target) {
             this.show(this.target);
+        }
+    }
+
+    #saveTextareaCaret() {
+        if (!this.target) {
+            return;
+        }
+        this.savedSelectionStart = this.target.selectionStart;
+        this.savedSelectionEnd = this.target.selectionEnd;
+    }
+
+    #restoreTextareaCaret() {
+        if (!this.target) {
+            return;
+        }
+        this.target.focus({ preventScroll: true });
+        if (typeof this.savedSelectionStart === 'number') {
+            this.target.selectionStart = this.savedSelectionStart;
+            this.target.selectionEnd = this.savedSelectionEnd ?? this.savedSelectionStart;
         }
     }
 
@@ -892,9 +916,16 @@ export class RelatedTagsEventHandler {
 
         // Need a slight delay because clicking the related tags list causes blur
         setTimeout(() => {
-            if (!this.relatedTagsUI.root.contains(document.activeElement) && !this.relatedTagsUI.isPinned) {
-                this.relatedTagsUI.hide();
+            if (this.relatedTagsUI.isPinned) {
+                return;
             }
+
+            const active = document.activeElement;
+            if (this.relatedTagsUI.root.contains(active) || active === this.relatedTagsUI.target) {
+                return;
+            }
+
+            this.relatedTagsUI.hide();
         }, 150);
     }
 
