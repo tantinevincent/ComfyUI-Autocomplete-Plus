@@ -64,21 +64,21 @@ def get_csv_file_status():
 
 def get_last_check_time_from_metadata():
     """
-    Helper function to get the last remote check timestamp from csv_meta.json.
+    Helper function to get the last remote check timestamp from data/csv_download_log.json.
     Returns the timestamp string if found, None otherwise.
     """
     try:
-        if not os.path.exists(dl.CSV_META_FILE):
+        if not os.path.exists(dl.CSV_DOWNLOAD_LOG_FILE):
             return None
 
-        with open(dl.CSV_META_FILE, "r", encoding="utf-8") as f:
-            metadata = json.load(f)
+        with open(dl.CSV_DOWNLOAD_LOG_FILE, "r", encoding="utf-8") as f:
+            log = json.load(f)
 
-        source = metadata.get("github_tag_source") or {}
+        source = log.get("github_tag_source") or {}
         return source.get("last_remote_check_timestamp")
 
     except (IOError, json.JSONDecodeError) as e:
-        print(f"[Autocomplete-Plus] Error reading csv_meta.json: {e}")
+        print(f"[Autocomplete-Plus] Error reading csv_download_log.json: {e}")
         return None
 
 
@@ -189,22 +189,22 @@ async def force_check_csv_updates(request):
 @server.PromptServer.instance.routes.get("/autocomplete-plus/csv/last-check-time")
 async def get_last_check_time(_request):
     """
-    Returns the last remote check timestamp from csv_meta.json.
+    Returns the last remote check timestamp from data/csv_download_log.json.
     Returns null if the file doesn't exist or if there's an error reading it.
     """
     try:
-        if not os.path.exists(dl.CSV_META_FILE):
-            return web.json_response({"last_check_time": None, "message": "csv_meta.json file not found"})
+        if not os.path.exists(dl.CSV_DOWNLOAD_LOG_FILE):
+            return web.json_response({"last_check_time": None, "message": "csv_download_log.json file not found"})
 
         last_check_time = get_last_check_time_from_metadata()
 
         if last_check_time is not None:
             return web.json_response({"last_check_time": last_check_time})
         else:
-            return web.json_response({"last_check_time": None, "message": "No GitHub tag source found in metadata"})
+            return web.json_response({"last_check_time": None, "message": "No GitHub tag source found in download log"})
 
     except (IOError, json.JSONDecodeError) as e:
-        print(f"[Autocomplete-Plus] Error reading csv_meta.json: {e}")
+        print(f"[Autocomplete-Plus] Error reading csv_download_log.json: {e}")
         return web.json_response({"last_check_time": None, "error": str(e)}, status=500)
 
 

@@ -16,6 +16,15 @@ TEMP_DOWNLOAD_DIR = os.path.join(DATA_DIR, ".download")
 
 CSV_META_FILE_NAME = "csv_meta.json"
 CSV_META_FILE = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", CSV_META_FILE_NAME))
+CSV_DOWNLOAD_LOG_FILE = os.path.join(DATA_DIR, "csv_download_log.json")
+CSV_META_VERSION = 5
+SOURCE_RUNTIME_KEYS = {
+    "last_filename",
+    "last_sha",
+    "last_download",
+    "last_remote_check_timestamp",
+    "last_generated_at",
+}
 
 GITHUB_TAG_REPO = "tantinevincent/tagdb-updater"
 GITHUB_TAG_BRANCH = "main"
@@ -41,28 +50,31 @@ def _archive_source_defaults(path: str, output: str) -> dict:
         "branch": E621_ARCHIVE_BRANCH,
         "path": path,
         "output": output,
-        "last_filename": None,
-        "last_sha": None,
-        "last_download": None,
-        "last_remote_check_timestamp": None,
     }
 
 
 DEFAULT_CSV_METADATA = {
-    "version": 4,
+    "version": CSV_META_VERSION,
     "check_updates_on_startup": True,
     "github_tag_source": {
         "repo": GITHUB_TAG_REPO,
         "branch": GITHUB_TAG_BRANCH,
         "files": ["danbooru.csv", "danbooru-ja.csv"],
         "output": OUTPUT_CSV_NAME,
-        "last_generated_at": None,
-        "last_download": None,
-        "last_remote_check_timestamp": None,
     },
     "e621_archive_source": _archive_source_defaults(E621_ARCHIVE_PATH, E621_OUTPUT_CSV_NAME),
     "gelbooru_archive_source": _archive_source_defaults(GELBOORU_ARCHIVE_PATH, GELBOORU_OUTPUT_CSV_NAME),
 }
+
+
+def _sanitize_source_config(source: dict | None, default: dict) -> dict:
+    result = json.loads(json.dumps(default))
+    if not isinstance(source, dict):
+        return result
+    for key in default:
+        if key in source and key not in SOURCE_RUNTIME_KEYS:
+            result[key] = source[key]
+    return result
 
 
 def get_file_path(file_name: str) -> str:
@@ -240,7 +252,6 @@ class Downloader:
     """Download Danbooru, e621, and Gelbooru tag CSVs from GitHub for autocomplete."""
 
     def __init__(self):
-        self.csv_meta_file_exists_at_start = False
         self._ensure_directories_exist()
         self.metadata = self._load_metadata()
 
@@ -248,45 +259,84 @@ class Downloader:
         return json.loads(json.dumps(DEFAULT_CSV_METADATA))
 
     def _load_metadata(self) -> dict:
-        default_metadata = self.get_default_csv_metadata()
+        metadata = self.get_default_csv_metadata()
 
         if not os.path.exists(CSV_META_FILE):
             print(f"[Autocomplete-Plus] Metadata file not found: {CSV_META_FILE}. Using default metadata.")
-            return default_metadata
+            return metadata
 
         try:
             with open(CSV_META_FILE, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
+                loaded = json.load(f)
 
-            if not isinstance(metadata, dict) or metadata.get("version") != DEFAULT_CSV_METADATA["version"]:
+            if not isinstance(loaded, dict):
+                print(f"[Autocomplete-Plus] Metadata is invalid. Using default metadata.")
+                return metadata
+
+            if loaded.get("version") != CSV_META_VERSION:
                 print(
-                    f"[Autocomplete-Plus] Metadata version mismatch. Expected {DEFAULT_CSV_METADATA['version']}, "
-                    f"found {metadata.get('version') if isinstance(metadata, dict) else None}. Using default metadata."
+                    f"[Autocomplete-Plus] Migrating csv_meta.json from version "
+                    f"{loaded.get('version')} to {CSV_META_VERSION}."
                 )
-                if isinstance(metadata, dict) and "check_updates_on_startup" in metadata:
-                    default_metadata["check_updates_on_startup"] = metadata["check_updates_on_startup"]
-                return default_metadata
 
-            self.csv_meta_file_exists_at_start = True
-            if "github_tag_source" not in metadata:
-                metadata["github_tag_source"] = default_metadata["github_tag_source"]
-            if "e621_archive_source" not in metadata:
-                metadata["e621_archive_source"] = default_metadata["e621_archive_source"]
-            if "gelbooru_archive_source" not in metadata:
-                metadata["gelbooru_archive_source"] = default_metadata["gelbooru_archive_source"]
+            if "check_updates_on_startup" in loaded:
+                metadata["check_updates_on_startup"] = loaded["check_updates_on_startup"]
+
+            defaults = self.get_default_csv_metadata()
+            for source_key in ("github_tag_source", "e621_archive_source", "gelbooru_archive_source"):
+                metadata[source_key] = _sanitize_source_config(loaded.get(source_key), defaults[source_key])
+
             return metadata
 
         except (OSError, json.JSONDecodeError) as e:
             print(f"[Autocomplete-Plus] Error loading metadata from {CSV_META_FILE}: {e}. Using default metadata.")
-            return default_metadata
+            return metadata
+
+    def _config_only_metadata(self) -> dict:
+        defaults = self.get_default_csv_metadata()
+        return {
+            "version": CSV_META_VERSION,
+            "check_updates_on_startup": self.metadata.get("check_updates_on_startup", True),
+            "github_tag_source": _sanitize_source_config(self.metadata.get("github_tag_source"), defaults["github_tag_source"]),
+            "e621_archive_source": _sanitize_source_config(self.metadata.get("e621_archive_source"), defaults["e621_archive_source"]),
+            "gelbooru_archive_source": _sanitize_source_config(
+                self.metadata.get("gelbooru_archive_source"), defaults["gelbooru_archive_source"]
+            ),
+        }
 
     def _save_metadata(self):
         try:
             os.makedirs(os.path.dirname(CSV_META_FILE), exist_ok=True)
+            self.metadata = self._config_only_metadata()
             with open(CSV_META_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.metadata, f, indent=2)
         except OSError as e:
             print(f"[Autocomplete-Plus] Error saving metadata to {CSV_META_FILE}: {e}")
+
+    def _load_download_log(self) -> dict:
+        if not os.path.exists(CSV_DOWNLOAD_LOG_FILE):
+            return {}
+        try:
+            with open(CSV_DOWNLOAD_LOG_FILE, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            return payload if isinstance(payload, dict) else {}
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"[Autocomplete-Plus] Error reading {CSV_DOWNLOAD_LOG_FILE}: {e}")
+            return {}
+
+    def _update_download_log(self, source_key: str, updates: dict) -> None:
+        log = self._load_download_log()
+        entry = log.get(source_key)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.update(updates)
+        log[source_key] = entry
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(CSV_DOWNLOAD_LOG_FILE, "w", encoding="utf-8") as f:
+                json.dump(log, f, indent=2)
+        except OSError as e:
+            print(f"[Autocomplete-Plus] Error saving {CSV_DOWNLOAD_LOG_FILE}: {e}")
 
     def _github_source(self) -> dict:
         source = self.metadata.setdefault("github_tag_source", self.get_default_csv_metadata()["github_tag_source"])
@@ -368,26 +418,15 @@ class Downloader:
             print(f"[Autocomplete-Plus] Failed to read GitHub tag meta.json: {e}")
             return None
 
-    def _should_refresh(self, remote_generated_at: str | None, force_check: bool) -> str | None:
-        output_path = get_file_path(OUTPUT_CSV_NAME)
-        source = self._github_source()
-
+    def _should_refresh(self, output_name: str, force_check: bool) -> str | None:
+        output_path = get_file_path(output_name)
         if not check_file_valid(output_path):
-            return f"{OUTPUT_CSV_NAME} is missing or empty locally."
-
-        if not self.csv_meta_file_exists_at_start:
-            return f"{CSV_META_FILE_NAME} was not found or schema changed. Forcing download."
-
+            return f"{output_name} is missing or empty locally."
         if force_check:
             return "Manual CSV update check requested."
-
-        last_generated = source.get("last_generated_at")
-        if remote_generated_at and last_generated != remote_generated_at:
-            return f"Remote tag dump is newer ({remote_generated_at} vs {last_generated})."
-
         return None
 
-    def _download_and_merge(self, remote_generated_at: str | None) -> bool:
+    def _download_and_merge(self) -> bool:
         english_csv = self._download_text_with_progress("danbooru.csv")
         japanese_csv = self._download_text_with_progress("danbooru-ja.csv")
         if not english_csv or not japanese_csv:
@@ -414,11 +453,6 @@ class Downloader:
                     pass
             return False
 
-        now_utc = datetime.now(timezone.utc).isoformat()
-        source = self._github_source()
-        source["last_download"] = now_utc
-        if remote_generated_at:
-            source["last_generated_at"] = remote_generated_at
         print(f"[Autocomplete-Plus] Wrote {len(rows)} tags to {output_path}.")
         return True
 
@@ -448,29 +482,8 @@ class Downloader:
             print(f"[Autocomplete-Plus] Failed to list {label} archive files: {e}")
             return None
 
-    def _should_refresh_archive(self, source: dict, output_name: str, remote_file: dict | None, force_check: bool) -> str | None:
-        output_path = get_file_path(output_name)
-
-        if not check_file_valid(output_path):
-            return f"{output_name} is missing or empty locally."
-
-        if not self.csv_meta_file_exists_at_start:
-            return f"{CSV_META_FILE_NAME} was not found or schema changed. Forcing download."
-
-        if force_check:
-            return "Manual CSV update check requested."
-
-        if not remote_file:
-            return None
-
-        remote_name = remote_file.get("name")
-        remote_sha = remote_file.get("sha")
-        if remote_sha and source.get("last_sha") != remote_sha:
-            return f"Remote {output_name} dump changed ({remote_name})."
-        if remote_name and source.get("last_filename") != remote_name:
-            return f"Remote {output_name} dump is newer ({remote_name})."
-
-        return None
+    def _should_refresh_archive(self, output_name: str, force_check: bool) -> str | None:
+        return self._should_refresh(output_name, force_check)
 
     def _download_archive_csv(self, source: dict, remote_file: dict, output_name: str, label: str) -> bool:
         filename = remote_file.get("name")
@@ -503,31 +516,59 @@ class Downloader:
                     pass
             return False
 
-        source["last_download"] = datetime.now(timezone.utc).isoformat()
-        source["last_filename"] = filename
-        source["last_sha"] = remote_file.get("sha")
         print(f"[Autocomplete-Plus] Wrote {len(rows)} tags to {output_path} from {filename}.")
         return True
 
     def _run_danbooru_check_and_download(self, force_check: bool):
-        now_utc = datetime.now(timezone.utc)
-        source = self._github_source()
+        now_utc = datetime.now(timezone.utc).isoformat()
+        output_name = self._github_source().get("output") or OUTPUT_CSV_NAME
+
+        if check_file_valid(get_file_path(output_name)) and not force_check:
+            print(f"[Autocomplete-Plus] Local {output_name} already exists. Skipping download.")
+            self._update_download_log(
+                "github_tag_source",
+                {
+                    "last_remote_check_timestamp": now_utc,
+                    "skipped": True,
+                    "reason": f"{output_name} already exists",
+                },
+            )
+            return
+
         print(f"[Autocomplete-Plus] Checking GitHub {GITHUB_TAG_REPO} for tag CSV updates...")
-
         remote_generated_at = self._fetch_remote_generated_at()
-        source["last_remote_check_timestamp"] = now_utc.isoformat()
-
-        reason = self._should_refresh(remote_generated_at, force_check)
+        reason = self._should_refresh(output_name, force_check)
+        log_entry = {
+            "last_remote_check_timestamp": now_utc,
+            "skipped": False,
+            "reason": reason,
+        }
         if reason:
             print(f"[Autocomplete-Plus] Queuing tag CSV refresh: {reason}")
-            self._download_and_merge(remote_generated_at)
+            if self._download_and_merge():
+                log_entry["last_download"] = datetime.now(timezone.utc).isoformat()
+                if remote_generated_at:
+                    log_entry["last_generated_at"] = remote_generated_at
         else:
             print("[Autocomplete-Plus] Local danbooru_tags.csv is up to date.")
+        self._update_download_log("github_tag_source", log_entry)
 
     def _run_archive_check_and_download(self, meta_key: str, filename_re: re.Pattern, label: str, force_check: bool):
         source = self._archive_source(meta_key)
         output_name = source.get("output")
-        source["last_remote_check_timestamp"] = datetime.now(timezone.utc).isoformat()
+        now_utc = datetime.now(timezone.utc).isoformat()
+
+        if check_file_valid(get_file_path(output_name)) and not force_check:
+            print(f"[Autocomplete-Plus] Local {output_name} already exists. Skipping download.")
+            self._update_download_log(
+                meta_key,
+                {
+                    "last_remote_check_timestamp": now_utc,
+                    "skipped": True,
+                    "reason": f"{output_name} already exists",
+                },
+            )
+            return
 
         entries = self._list_archive_files(source, label)
         remote_file = pick_latest_archive_file(entries or [], filename_re)
@@ -536,14 +577,31 @@ class Downloader:
                 print(f"[Autocomplete-Plus] Skipping {label} refresh because the archive listing failed.")
             else:
                 print(f"[Autocomplete-Plus] No matching {label} archive CSV found.")
+            self._update_download_log(
+                meta_key,
+                {
+                    "last_remote_check_timestamp": now_utc,
+                    "skipped": True,
+                    "reason": f"{label} archive listing failed or empty",
+                },
+            )
             return
 
-        reason = self._should_refresh_archive(source, output_name, remote_file, force_check)
+        reason = self._should_refresh_archive(output_name, force_check)
+        log_entry = {
+            "last_remote_check_timestamp": now_utc,
+            "skipped": False,
+            "reason": reason,
+        }
         if reason:
             print(f"[Autocomplete-Plus] Queuing {label} CSV refresh: {reason}")
-            self._download_archive_csv(source, remote_file, output_name, label)
+            if self._download_archive_csv(source, remote_file, output_name, label):
+                log_entry["last_download"] = datetime.now(timezone.utc).isoformat()
+                log_entry["last_filename"] = remote_file.get("name")
+                log_entry["last_sha"] = remote_file.get("sha")
         else:
             print(f"[Autocomplete-Plus] Local {output_name} is up to date.")
+        self._update_download_log(meta_key, log_entry)
 
     def _ensure_directories_exist(self):
         os.makedirs(DATA_DIR, exist_ok=True)

@@ -75,7 +75,7 @@
 
 ## CSV データ
 
-オートコンプリートには基本となる CSV データが1つ必要です。これは [tantinevincent/tagdb-updater](https://github.com/tantinevincent/tagdb-updater) の `danbooru.csv` と `danbooru-ja.csv` から生成され、ComfyUI にインストール後の初回起動時に自動でダウンロード・結合されます。
+オートコンプリートには基本となる CSV データが1つ必要です。これは [tantinevincent/tagdb-updater](https://github.com/tantinevincent/tagdb-updater) の `danbooru.csv` と `danbooru-ja.csv` から生成され、`data/danbooru_tags.csv` が無いときに自動でダウンロード・結合されます（通常はインストール後の初回起動）。既にあるローカル CSV は起動時に上書きしません。
 日本語は Danbooru wiki の `other_names` とコミュニティ翻訳 CSV に由来します。投稿数は Danbooru サイトと異なる場合があります。関連タグはこの CSV ではなく Danbooru API から取得します。
 
 > [!IMPORTANT]
@@ -89,13 +89,13 @@
 
 ### e621 CSV
 
-e621 タグは初回起動時および新しい dump があるときに [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive)（`tag-lists/e621/`）から自動ダウンロードされます。最新の `e621_YYYY-MM-DD_ptN-ia-ed.csv` を `data/e621_tags.csv` に書き出します（Danbooru と同じ 4 列）。現行 dump は通常 `pt20`（投稿数が 20 未満のタグは含まれません）。アーカイブへの commit はおおよそ四半期ごとです。
+e621 タグは `data/e621_tags.csv` が無いときに [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive)（`tag-lists/e621/`）から自動ダウンロードされます。最新の `e621_YYYY-MM-DD_ptN-ia-ed.csv` を `data/e621_tags.csv` に書き出します（Danbooru と同じ 4 列）。現行 dump は通常 `pt20`（投稿数が 20 未満のタグは含まれません）。アーカイブへの commit はおおよそ四半期ごとです。既にあるローカル CSV は起動時に上書きしません。
 
 追加タグはこれまでどおり `e621_tags*.csv` を data フォルダーに置けます。関連タグは常に Danbooru の API を使用します（e621 の関連タグは未対応です）。
 
 ### Gelbooru CSV
 
-Gelbooru タグも同じ [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive)（`tag-lists/gelbooru/`）から自動ダウンロードされます。最新の `gelbooru_YYYY-MM-DD_ptN.csv` を `data/gelbooru_tags.csv` に書き出します。現行 dump は通常 `pt20` です。ambiguous 付きの `gelbooru_tags_*_incl_ambiguous.csv` は使いません。
+Gelbooru タグも同じ [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive)（`tag-lists/gelbooru/`）から、`data/gelbooru_tags.csv` が無いときに自動ダウンロードされます。最新の `gelbooru_YYYY-MM-DD_ptN.csv` を `data/gelbooru_tags.csv` に書き出します。現行 dump は通常 `pt20` です。ambiguous 付きの `gelbooru_tags_*_incl_ambiguous.csv` は使いません。既にあるローカル CSV は起動時に上書きしません。
 
 追加タグは `gelbooru_tags*.csv` を data フォルダーに置けます。関連タグは常に Danbooru の API を使用します。
 
@@ -195,28 +195,30 @@ worst_quality,5,9999999,
 
 ### 起動時のCSV更新チェックを無効化する
 
-デフォルトの動作では、ComfyUI起動時に一定の間隔で CSV ファイルの更新チェックとダウンロード行います。
-インターネットにアクセス出来ない環境で起動した場合、タイムアウトが発生するまで起動が遅延する事があります。
+デフォルトの動作では、ComfyUI起動時に不足している CSV だけをダウンロードします。
+インターネットにアクセス出来ない環境で、かつ CSV がまだ無い場合、タイムアウトが発生するまで起動が遅延する事があります。
+対応する output CSV が `data/` に既にある source は、起動時に GitHub へアクセスしません。
+ダウンロード時刻などは `data/csv_download_log.json` に記録するだけで、再ダウンロードの判断には使いません。
 
 以下の手順を行う事により、ComfyUI起動時のチェック処理をスキップする事が出来ます。
 
 1. このカスタムノードをインストールした状態でComfyUIを一度起動し、 `csv_meta.json` ファイルを生成する  
   `csv_meta.json` はこのカスタムノードのフォルダー直下に作成されます
-2. `csv_meat.json` をテキストエディターで開き、`check_updates_on_startup` の値を `true` -> `false` に変更し保存する  
+2. `csv_meta.json` をテキストエディターで開き、`check_updates_on_startup` の値を `true` -> `false` に変更し保存する  
   `check_updates_on_startup` が存在しない場合、 `version` の下に追記してください
 
 **変更後の `csv_meta.json`：**
 ```json
 {
-  "version": 4,
+  "version": 5,
   "check_updates_on_startup": false,
   ...
 }
 ```
 
 **補足事項：**
-- `check_updates_on_startup` の値を再び `true` にするか、 `version` が切り替わるまでチェック処理は行われなくなります
-- `check_updates_on_startup` が `false` でも、Autocompelte Plusの設定から `Check CSV updates` のボタンを押す事で手動チェックが可能です
+- `check_updates_on_startup` の値を再び `true` にするまでチェック処理は行われなくなります
+- `check_updates_on_startup` が `false` でも、Autocomplete Plusの設定から `Check CSV updates` のボタンを押す事で手動チェックが可能です。強制チェックはローカル CSV があっても再ダウンロードします。
 
 ## 動作に関する詳細
 

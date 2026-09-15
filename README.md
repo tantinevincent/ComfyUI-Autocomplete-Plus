@@ -77,7 +77,7 @@ Detailed behavior is as follows:
 
 ## CSV Data
 
-A basic CSV data file is required for autocomplete. It is built from [tantinevincent/tagdb-updater](https://github.com/tantinevincent/tagdb-updater) (`danbooru.csv` + `danbooru-ja.csv`) and is automatically downloaded and merged when ComfyUI is first launched after installation, so no setup is required.  
+A basic CSV data file is required for autocomplete. It is built from [tantinevincent/tagdb-updater](https://github.com/tantinevincent/tagdb-updater) (`danbooru.csv` + `danbooru-ja.csv`) and is automatically downloaded and merged when `data/danbooru_tags.csv` is missing (typically the first launch after install). Existing local CSVs are not overwritten on startup.  
 Japanese names come from Danbooru wiki `other_names` plus community translation CSVs. Post counts may differ slightly from the Danbooru website. Related tags are fetched from Danbooru and are not taken from this CSV.
 
 > [!IMPORTANT]
@@ -91,13 +91,13 @@ The dump is generated weekly from Danbooru. Artist, copyright, character, genera
 
 ### e621 CSV
 
-e621 tags are downloaded automatically from [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive) (`tag-lists/e621/`) on first launch and when a newer dump is published. The latest `e621_YYYY-MM-DD_ptN-ia-ed.csv` is written to `data/e621_tags.csv` (same 4-column layout as Danbooru). Current dumps typically use `pt20` (tags with fewer than 20 posts are omitted). The archive commits new files about once a quarter.
+e621 tags are downloaded automatically from [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive) (`tag-lists/e621/`) when `data/e621_tags.csv` is missing. The latest `e621_YYYY-MM-DD_ptN-ia-ed.csv` is written to `data/e621_tags.csv` (same 4-column layout as Danbooru). Current dumps typically use `pt20` (tags with fewer than 20 posts are omitted). The archive commits new files about once a quarter. Existing local CSVs are not overwritten on startup.
 
 You can still add extra e621 tags with `e621_tags*.csv` files in the data folder. Related tags always use Danbooru's API (e621 related tags are not supported).
 
 ### Gelbooru CSV
 
-Gelbooru tags are downloaded automatically from the same [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive) repo (`tag-lists/gelbooru/`). The latest `gelbooru_YYYY-MM-DD_ptN.csv` is written to `data/gelbooru_tags.csv`. Current dumps typically use `pt20`. Ambiguous-tag dumps (`gelbooru_tags_*_incl_ambiguous.csv`) are ignored.
+Gelbooru tags are downloaded automatically from the same [tantinevincent/dbr-e621-lists-archive](https://github.com/tantinevincent/dbr-e621-lists-archive) repo (`tag-lists/gelbooru/`) when `data/gelbooru_tags.csv` is missing. The latest `gelbooru_YYYY-MM-DD_ptN.csv` is written to `data/gelbooru_tags.csv`. Current dumps typically use `pt20`. Ambiguous-tag dumps (`gelbooru_tags_*_incl_ambiguous.csv`) are ignored. Existing local CSVs are not overwritten on startup.
 
 You can still add extra Gelbooru tags with `gelbooru_tags*.csv` files in the data folder. Related tags always use Danbooru's API.
 
@@ -197,8 +197,10 @@ For example, by preparing the following CSV, you can quickly insert correspondin
 
 ### Disabling CSV Update Check on Startup
 
-By default, ComfyUI performs CSV file update checks and downloads at regular intervals during startup.
-When starting in an environment without internet access, startup may be delayed until a timeout occurs.
+By default, ComfyUI downloads missing tag CSVs during startup.
+When starting in an environment without internet access and a CSV is still missing, startup may be delayed until a timeout occurs.
+If the corresponding output CSV already exists under `data/`, startup does not contact GitHub for that source.
+Download timestamps are written to `data/csv_download_log.json` for reference only and are not used to decide whether to download again.
 
 You can skip the check process during ComfyUI startup by following these steps:
 
@@ -210,15 +212,15 @@ You can skip the check process during ComfyUI startup by following these steps:
 **`csv_meta.json` after modification:**
 ```json
 {
-  "version": 4,
+  "version": 5,
   "check_updates_on_startup": false,
   ...
 }
 ```
 
 **Additional notes:**
-- The check process will not be performed until the value of `check_updates_on_startup` is changed back to `true` or the `version` is switched.
-- Even when `check_updates_on_startup` is `false`, manual checking is still possible by pressing the `Check CSV updates` button in the Autocomplete Plus settings.
+- The check process will not be performed until the value of `check_updates_on_startup` is changed back to `true`.
+- Even when `check_updates_on_startup` is `false`, manual checking is still possible by pressing the `Check CSV updates` button in the Autocomplete Plus settings. That force check re-downloads even if local CSVs already exist.
 
 ## More details on how it works
 
